@@ -32,3 +32,72 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model WarrantyRegistration {
+  id            String            @id @default(uuid())
+  shop          String
+  customerId    String            // Shopify customer GID: "gid://shopify/Customer/xxxx"
+  firstName     String
+  email         String
+  phone         String            // Mobile number (entered by customer)
+  city          String            // Iraqi city from dropdown
+  store         String            // Selected retail store/outlet
+  purchaseDate  DateTime
+  invoiceNumber String?           // Optional invoice number
+  status        String            @default("pending") // pending, approved, rejected
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  products      WarrantyProduct[]
+  smsLogs       SMSLog[]
+
+  @@index([shop])
+  @@index([phone])
+}
+
+model WarrantyProduct {
+  id             String               @id @default(uuid())
+  registrationId String
+  productId      String?              // Shopify Product GID (null if manual entry)
+  productTitle   String
+  sku            String?
+  isManual       Boolean              @default(false) // true if manually entered (not from catalog)
+
+  registration   WarrantyRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([registrationId])
+}
+
+model CustomerReward {
+  id           String    @id @default(uuid())
+  shop         String
+  phone        String    // Normalized mobile number
+  customerId   String    // Shopify customer GID
+  rewardType   String    // "WELCOME_10" or "WARRANTY_15"
+  discountCode String    // Shopify discount code generated
+  issuedAt     DateTime  @default(now())
+  sentAt       DateTime?
+
+  smsLogs      SMSLog[]
+
+  @@unique([shop, phone, rewardType])
+  @@index([shop])
+  @@index([phone])
+}
+
+model SMSLog {
+  id                  String                @id @default(uuid())
+  shop                String
+  phone               String
+  registrationId      String?
+  rewardId            String?
+  smsSent             Boolean               @default(false)
+  smsSentAt           DateTime?
+  smsProviderResponse String?               // API response or error log details
+
+  registration        WarrantyRegistration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  reward              CustomerReward?       @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+
+  @@index([registrationId])
+  @@index([rewardId])
+}

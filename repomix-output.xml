@@ -1,0 +1,5262 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+.dockerignore
+.editorconfig
+.eslintignore
+.eslintrc.cjs
+.github/CODE_OF_CONDUCT.md
+.github/CODEOWNERS
+.github/CONTRIBUTING.md
+.github/dependabot.yml
+.github/ISSUE_TEMPLATE.md
+.github/PULL_REQUEST_TEMPLATE.md
+.github/workflows/ci.yml
+.github/workflows/cla.yml
+.github/workflows/close-waiting-for-response-issues.yml
+.github/workflows/convert-to-js.yml
+.github/workflows/remove-labels-on-activity.yml
+.gitignore
+.graphqlrc.ts
+.npmrc
+.prettierignore
+app/db.server.ts
+app/entry.server.tsx
+app/globals.d.ts
+app/root.tsx
+app/routes.ts
+app/routes/_index/route.tsx
+app/routes/_index/styles.module.css
+app/routes/api.customer-lookup.tsx
+app/routes/api.products.tsx
+app/routes/api.reward.record-welcome.tsx
+app/routes/api.warranty.tsx
+app/routes/app._index.tsx
+app/routes/app.additional.tsx
+app/routes/app.tsx
+app/routes/app.warranties.tsx
+app/routes/auth.$.tsx
+app/routes/auth.login/error.server.tsx
+app/routes/auth.login/route.tsx
+app/routes/public.warranty-register.tsx
+app/routes/webhooks.app.scopes_update.tsx
+app/routes/webhooks.app.uninstalled.tsx
+app/shopify.server.ts
+app/utils/twilio.server.ts
+CHANGELOG.md
+Dockerfile
+env.d.ts
+package.json
+pnpm-workspace.yaml
+prisma/migrations/20240530213853_create_session_table/migration.sql
+prisma/migrations/20260618181611_add_warranty_model/migration.sql
+prisma/migrations/20260619143115_replace_invoice_url_with_invoice_number/migration.sql
+prisma/migrations/20260619155920_phase7_relational_schema/migration.sql
+prisma/migrations/migration_lock.toml
+prisma/schema.prisma
+README.md
+shopify.app.toml
+shopify.web.toml
+shopify.web.toml.liquid
+tsconfig.json
+verify-db.ts
+verify-scopes.ts
+vite.config.ts
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path=".dockerignore">
+.cache
+build
+node_modules
+</file>
+
+<file path=".editorconfig">
+# editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+indent_size = 2
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Markdown syntax specifies that trailing whitespaces can be meaningful,
+# so let’s not trim those. e.g. 2 trailing spaces = linebreak (<br />)
+# See https://daringfireball.net/projects/markdown/syntax#p
+[*.md]
+trim_trailing_whitespace = false
+</file>
+
+<file path=".eslintignore">
+node_modules
+build
+public/build
+shopify-app-remix
+*/*.yml
+.shopify
+</file>
+
+<file path=".eslintrc.cjs">
+/** @type {import('@types/eslint').Linter.BaseConfig} */
+module.exports = {
+  root: true,
+  extends: [
+    "@remix-run/eslint-config",
+    "@remix-run/eslint-config/node",
+    "@remix-run/eslint-config/jest-testing-library",
+    "prettier",
+  ],
+  globals: {
+    shopify: "readonly"
+  },
+};
+</file>
+
+<file path=".github/CODE_OF_CONDUCT.md">
+# Contributor Covenant Code of Conduct
+
+## Our Pledge
+
+In the interest of fostering an open and welcoming environment, we as
+contributors and maintainers pledge to making participation in our project and
+our community a harassment-free experience for everyone, regardless of age, body
+size, disability, ethnicity, gender identity and expression, level of experience,
+nationality, personal appearance, race, religion, or sexual identity and
+orientation.
+
+## Our Standards
+
+Examples of behavior that contributes to creating a positive environment
+include:
+
+- Using welcoming and inclusive language
+- Being respectful of differing viewpoints and experiences
+- Gracefully accepting constructive criticism
+- Focusing on what is best for the community
+- Showing empathy towards other community members
+
+Examples of unacceptable behavior by participants include:
+
+- The use of sexualized language or imagery and unwelcome sexual attention or
+  advances
+- Trolling, insulting/derogatory comments, and personal or political attacks
+- Public or private harassment
+- Publishing others' private information, such as a physical or electronic
+  address, without explicit permission
+- Other conduct which could reasonably be considered inappropriate in a
+  professional setting
+
+## Our Responsibilities
+
+Project maintainers are responsible for clarifying the standards of acceptable
+behavior and are expected to take appropriate and fair corrective action in
+response to any instances of unacceptable behavior.
+
+Project maintainers have the right and responsibility to remove, edit, or
+reject comments, commits, code, wiki edits, issues, and other contributions
+that are not aligned to this Code of Conduct, or to ban temporarily or
+permanently any contributor for other behaviors that they deem inappropriate,
+threatening, offensive, or harmful.
+
+## Scope
+
+This Code of Conduct applies both within project spaces and in public spaces
+when an individual is representing the project or its community. Examples of
+representing a project or community include using an official project e-mail
+address, posting via an official social media account, or acting as an appointed
+representative at an online or offline event. Representation of a project may be
+further defined and clarified by project maintainers.
+
+## Enforcement
+
+Instances of abusive, harassing, or otherwise unacceptable behavior may be
+reported by contacting the project team at opensource@shopify.com. All
+complaints will be reviewed and investigated and will result in a response that
+is deemed necessary and appropriate to the circumstances. The project team is
+obligated to maintain confidentiality with regard to the reporter of an incident.
+Further details of specific enforcement policies may be posted separately.
+
+Project maintainers who do not follow or enforce the Code of Conduct in good
+faith may face temporary or permanent repercussions as determined by other
+members of the project's leadership.
+
+## Attribution
+
+This Code of Conduct is adapted from the [Contributor Covenant][homepage], version 1.4,
+available at https://www.contributor-covenant.org/version/1/4/code-of-conduct/
+
+[homepage]: https://www.contributor-covenant.org
+</file>
+
+<file path=".github/CONTRIBUTING.md">
+# How to contribute
+
+The Shopify Remix app template is an open source project. We want to make it as easy and transparent as possible to contribute. If we are missing anything or can make the process easier in any way, please let us know by [opening an issue](https://github.com/Shopify/shopify-app-template-remix/issues/new).
+
+## Code of conduct
+
+We expect all participants to read our [code of conduct](https://github.com/Shopify/shopify-app-template-remix/.github/CODE_OF_CONDUCT.md) to understand which actions are and aren’t tolerated.
+
+## Open development
+
+All work on the Shopify Remix app template happens directly on GitHub. Both team members and external contributors send pull requests which go through the same review process.
+
+## Bugs
+
+### Where to find known issues
+
+We track all of our issues in GitHub and [bugs](https://github.com/Shopify/shopify-app-template-remix/labels/Bug) are labeled accordingly. If you are planning to work on an issue, avoid ones which already have an assignee, where someone has commented within the last two weeks they are working on it, or the issue is labeled with [fix in progress](https://github.com/Shopify/shopify-app-template-remix/labels/fix%20in%20progress). We will do our best to communicate when an issue is being worked on internally.
+
+### Reporting new issues
+
+To reduce duplicates, look through open issues before filing one. When [opening an issue](https://github.com/Shopify/shopify-app-template-remix/issues/new?template=ISSUE.md), complete as much of the template as possible.
+
+## Your first pull request
+
+Working on your first pull request? You can learn how from this free video series:
+
+[How to Contribute to an Open Source Project on GitHub](https://egghead.io/series/how-to-contribute-to-an-open-source-project-on-github)
+
+To help you get familiar with our contribution process, we have a list of [good first issues](https://github.com/Shopify/shopify-app-template-remix/labels/good%20first%20issue) that contain bugs with limited scope. This is a great place to get started.
+
+If you decide to fix an issue, please check the comment thread in case somebody is already working on a fix. If nobody is working on it, leave a comment stating that you intend to work on it.
+
+If somebody claims an issue but doesn’t follow up for more than two weeks, it’s fine to take it over but still leave a comment stating that you intend to work on it.
+
+### Sending a pull request
+
+We’ll review your pull request and either merge it, request changes to it, or close it with an explanation. We’ll do our best to provide updates and feedback throughout the process.
+
+### Contributor License Agreement (CLA)
+
+Each contributor is required to [sign a CLA](https://cla.shopify.com/). This process is automated as part of your first pull request and is only required once. If any contributor has not signed or does not have an associated GitHub account, the CLA check will fail and the pull request is unable to be merged.
+</file>
+
+<file path=".github/ISSUE_TEMPLATE.md">
+---
+name: '🐛 Bug Report'
+about: Something isn't working
+labels: 'Type: Bug 🐛'
+---
+
+# Issue summary
+
+Before opening this issue, I have:
+
+- [ ] Upgraded to the latest version of the `@shopify` packages
+  - Affected `@shopify/shopify-*` package and version:
+  - Node version:
+  - Operating system:
+- [ ] Set `{ logger: { level: LogSeverity.Debug } }` in my configuration
+- [ ] Found a reliable way to reproduce the problem that indicates it's a problem with the package
+- [ ] Looked for similar issues in this repository
+- [ ] Checked that this isn't an issue with a Shopify API
+  - If it is, please create a post in the [Shopify community forums](https://community.shopify.com/c/partners-and-developers/ct-p/appdev) or report it to [Shopify Partner Support](https://help.shopify.com/en/support/partners/org-select)
+
+<!--
+Write a short description of the issue here.
+
+We can only fix issues for which there is a clear reproduction scenario.
+The more context you can provide, the easier it becomes for us to investigate and fix the issue.
+-->
+
+## Expected behavior
+
+What do you think should happen?
+
+## Actual behavior
+
+What actually happens?
+
+## Steps to reproduce the problem
+
+1.
+1.
+1.
+
+## Debug logs
+
+```
+// Paste any relevant logs here
+```
+</file>
+
+<file path=".github/PULL_REQUEST_TEMPLATE.md">
+<!--
+  ☝️How to write a good PR title:
+  - Prefix it with [Feature] (if applicable)
+  - Start with a verb, for example: Add, Delete, Improve, Fix…
+  - Give as much context as necessary and as little as possible
+  - Prefix it with [WIP] while it’s a work in progress
+-->
+
+### WHY are these changes introduced?
+
+Fixes #0000 <!-- link to issue if one exists -->
+
+<!--
+  Context about the problem that’s being addressed.
+-->
+
+### WHAT is this pull request doing?
+
+<!--
+  Summary of the changes committed.
+  Before / after screenshots appreciated for UI changes.
+-->
+
+### Test this PR
+
+```bash
+shopify app init --template=https://github.com/Shopify/shopify-app-template-remix#<your-branch-name>
+```
+
+### Checklist
+
+- [ ] I have made changes to the `README.md` file and other related documentation, if applicable
+- [ ] I have added an entry to `CHANGELOG.md`
+- [ ] I'm aware I need to create a new release when this PR is merged
+</file>
+
+<file path=".github/workflows/cla.yml">
+name: Contributor License Agreement (CLA)
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.issue.pull_request
+        && !github.event.issue.pull_request.merged_at
+        && contains(github.event.comment.body, 'signed')
+      )
+      || (github.event.pull_request && !github.event.pull_request.merged)
+    steps:
+      - uses: Shopify/shopify-cla-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cla-token: ${{ secrets.CLA_TOKEN }}
+</file>
+
+<file path=".prettierignore">
+package.json
+.shadowenv.d
+.vscode
+node_modules
+prisma
+public
+.shopify
+</file>
+
+<file path="app/entry.server.tsx">
+import { PassThrough } from "stream";
+import { renderToPipeableStream } from "react-dom/server";
+import { RemixServer } from "@remix-run/react";
+import {
+  createReadableStreamFromReadable,
+  type EntryContext,
+} from "@remix-run/node";
+import { isbot } from "isbot";
+import { addDocumentResponseHeaders } from "./shopify.server";
+
+export const streamTimeout = 5000;
+
+export default async function handleRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext
+) {
+  addDocumentResponseHeaders(request, responseHeaders);
+  const userAgent = request.headers.get("user-agent");
+  const callbackName = isbot(userAgent ?? '')
+    ? "onAllReady"
+    : "onShellReady";
+
+  return new Promise((resolve, reject) => {
+    const { pipe, abort } = renderToPipeableStream(
+      <RemixServer
+        context={remixContext}
+        url={request.url}
+      />,
+      {
+        [callbackName]: () => {
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
+
+          responseHeaders.set("Content-Type", "text/html");
+          resolve(
+            new Response(stream, {
+              headers: responseHeaders,
+              status: responseStatusCode,
+            })
+          );
+          pipe(body);
+        },
+        onShellError(error) {
+          reject(error);
+        },
+        onError(error) {
+          responseStatusCode = 500;
+          console.error(error);
+        },
+      }
+    );
+
+    // Automatically timeout the React renderer after 6 seconds, which ensures
+    // React has enough time to flush down the rejected boundary contents
+    setTimeout(abort, streamTimeout + 1000);
+  });
+}
+</file>
+
+<file path="app/globals.d.ts">
+declare module "*.css";
+</file>
+
+<file path="app/root.tsx">
+import {
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+} from "@remix-run/react";
+
+export default function App() {
+  return (
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <link rel="preconnect" href="https://cdn.shopify.com/" />
+        <link
+          rel="stylesheet"
+          href="https://cdn.shopify.com/static/fonts/inter/v4/styles.css"
+        />
+        <Meta />
+        <Links />
+      </head>
+      <body>
+        <Outlet />
+        <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/routes.ts">
+import { flatRoutes } from "@remix-run/fs-routes";
+
+export default flatRoutes();
+</file>
+
+<file path="app/routes/_index/route.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
+import { Form, useLoaderData } from "@remix-run/react";
+
+import { login } from "../../shopify.server";
+
+import styles from "./styles.module.css";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+
+  if (url.searchParams.get("shop")) {
+    throw redirect(`/app?${url.searchParams.toString()}`);
+  }
+
+  return { showForm: Boolean(login) };
+};
+
+export default function App() {
+  const { showForm } = useLoaderData<typeof loader>();
+
+  return (
+    <div className={styles.index}>
+      <div className={styles.content}>
+        <h1 className={styles.heading}>A short heading about [your app]</h1>
+        <p className={styles.text}>
+          A tagline about [your app] that describes your value proposition.
+        </p>
+        {showForm && (
+          <Form className={styles.form} method="post" action="/auth/login">
+            <label className={styles.label}>
+              <span>Shop domain</span>
+              <input className={styles.input} type="text" name="shop" />
+              <span>e.g: my-shop-domain.myshopify.com</span>
+            </label>
+            <button className={styles.button} type="submit">
+              Log in
+            </button>
+          </Form>
+        )}
+        <ul className={styles.list}>
+          <li>
+            <strong>Product feature</strong>. Some detail about your feature and
+            its benefit to your customer.
+          </li>
+          <li>
+            <strong>Product feature</strong>. Some detail about your feature and
+            its benefit to your customer.
+          </li>
+          <li>
+            <strong>Product feature</strong>. Some detail about your feature and
+            its benefit to your customer.
+          </li>
+        </ul>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/routes/_index/styles.module.css">
+.index {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  width: 100%;
+  text-align: center;
+  padding: 1rem;
+}
+
+.heading,
+.text {
+  padding: 0;
+  margin: 0;
+}
+
+.text {
+  font-size: 1.2rem;
+  padding-bottom: 2rem;
+}
+
+.content {
+  display: grid;
+  gap: 2rem;
+}
+
+.form {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 0 auto;
+  gap: 1rem;
+}
+
+.label {
+  display: grid;
+  gap: 0.2rem;
+  max-width: 20rem;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.input {
+  padding: 0.4rem;
+}
+
+.button {
+  padding: 0.4rem;
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  padding-top: 3rem;
+  margin: 0;
+  display: flex;
+  gap: 2rem;
+}
+
+.list > li {
+  max-width: 20rem;
+  text-align: left;
+}
+
+@media only screen and (max-width: 50rem) {
+  .list {
+    display: block;
+  }
+
+  .list > li {
+    padding-bottom: 1rem;
+  }
+}
+</file>
+
+<file path="app/routes/api.customer-lookup.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { unauthenticated } from "../shopify.server";
+import { normalizePhone } from "../utils/twilio.server";
+
+/**
+ * GET /api/customer-lookup?phone=07701234567&shop=store.myshopify.com
+ *
+ * Public endpoint - looks up a Shopify customer by normalized phone number.
+ * Returns customer info if found, or { exists: false } otherwise.
+ */
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const phone = url.searchParams.get("phone");
+  const shop = url.searchParams.get("shop");
+
+  if (!phone || !shop) {
+    return json(
+      { error: "phone and shop query parameters are required" },
+      { status: 400 }
+    );
+  }
+
+  console.log("[customer-lookup] Incoming phone:", phone);
+  const normalized = normalizePhone(phone);
+  console.log("[customer-lookup] Normalized phone:", normalized);
+
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+
+    const query = `#graphql
+      query customerByPhone($query: String!) {
+        customers(first: 1, query: $query) {
+          edges {
+            node {
+              id
+              firstName
+              lastName
+              email
+              phone
+            }
+          }
+        }
+      }`;
+    const variables = { query: `phone:${normalized}` };
+
+    console.log("[customer-lookup] Shopify lookup query:", query, "variables:", variables);
+
+    const response = await admin.graphql(query, { variables });
+    const data = (await response.json()) as any;
+    
+    console.log("[customer-lookup] Shopify response:", JSON.stringify(data, null, 2));
+
+    if (data?.errors) {
+      console.error("[customer-lookup] GraphQL errors returned from Shopify:", data.errors);
+      return json({
+        exists: false,
+        lookupFailed: true,
+        error: data.errors[0]?.message || "GraphQL error",
+      });
+    }
+
+    const edges = data?.data?.customers?.edges || [];
+
+    if (edges.length > 0) {
+      const customer = edges[0].node;
+      console.log("[customer-lookup] Customer found on Shopify:", customer.id);
+      return json({
+        exists: true,
+        customerId: customer.id,
+        firstName: customer.firstName || "",
+        lastName: customer.lastName || "",
+        email: customer.email || "",
+        phone: customer.phone || normalized,
+      });
+    }
+
+    console.log("[customer-lookup] Customer not found on Shopify (valid state).");
+    return json({ exists: false });
+  } catch (error: any) {
+    console.error("[customer-lookup] Actual error encountered during lookup:", error);
+    // Return a non-blocking 200 response with lookupFailed: true
+    return json({
+      exists: false,
+      lookupFailed: true,
+      error: error?.message || "Internal server error",
+    });
+  }
+};
+</file>
+
+<file path="app/routes/api.products.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { unauthenticated } from "../shopify.server";
+
+/**
+ * GET /api/products?shop=store.myshopify.com&search=air+fryer
+ *
+ * Public endpoint - searches Shopify catalog products by title.
+ * Returns product title, id, and first variant SKU.
+ */
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const shop = url.searchParams.get("shop");
+  const search = url.searchParams.get("search") || "";
+
+  if (!shop) {
+    return json({ error: "shop query parameter is required" }, { status: 400 });
+  }
+
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+
+    const queryFilter = search ? `title:*${search}*` : "";
+
+    const response = await admin.graphql(
+      `#graphql
+      query searchProducts($query: String!, $first: Int!) {
+        products(first: $first, query: $query, sortKey: TITLE) {
+          edges {
+            node {
+              id
+              title
+              status
+              variants(first: 1) {
+                edges {
+                  node {
+                    sku
+                  }
+                }
+              }
+            }
+          }
+        }
+      }`,
+      {
+        variables: {
+          query: queryFilter,
+          first: 25,
+        },
+      }
+    );
+
+    const data = await response.json();
+    const edges = data?.data?.products?.edges || [];
+
+    const products = edges
+      .filter((e: any) => e.node.status === "ACTIVE")
+      .map((e: any) => ({
+        id: e.node.id,
+        title: e.node.title,
+        sku: e.node.variants?.edges?.[0]?.node?.sku || null,
+      }));
+
+    return json({ products });
+  } catch (error: any) {
+    console.error("[api.products] Error:", error);
+    return json(
+      {
+        error: "Failed to fetch products.",
+        debug: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+      },
+      { status: 500 }
+    );
+  }
+};
+</file>
+
+<file path="app/routes/api.reward.record-welcome.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import prisma from "../db.server";
+import { normalizePhone } from "../utils/twilio.server";
+
+/**
+ * POST /api/reward/record-welcome
+ *
+ * Records that a WELCOME_10 discount code was issued from the main website.
+ * This prevents warranty flow from issuing duplicate welcome rewards.
+ *
+ * Body: { shop, phone, customerId, discountCode }
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  try {
+    const body = await request.json();
+    const { shop, phone, customerId, discountCode } = body;
+
+    if (!shop || !phone || !customerId || !discountCode) {
+      return json(
+        { error: "shop, phone, customerId, and discountCode are required." },
+        { status: 400 }
+      );
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // Check if already exists
+    const existing = await prisma.customerReward.findUnique({
+      where: {
+        shop_phone_rewardType: {
+          shop,
+          phone: normalizedPhone,
+          rewardType: "WELCOME_10",
+        },
+      },
+    });
+
+    if (existing) {
+      return json({
+        success: true,
+        message: "WELCOME_10 reward already recorded for this phone.",
+        alreadyExists: true,
+      });
+    }
+
+    await prisma.customerReward.create({
+      data: {
+        shop,
+        phone: normalizedPhone,
+        customerId,
+        rewardType: "WELCOME_10",
+        discountCode,
+      },
+    });
+
+    return json({ success: true, alreadyExists: false }, { status: 201 });
+  } catch (error: any) {
+    console.error("[record-welcome] Error:", error);
+    return json(
+      { error: "Failed to record welcome reward." },
+      { status: 500 }
+    );
+  }
+};
+</file>
+
+<file path="app/routes/api.warranty.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
+import {
+  normalizePhone,
+  sendSms,
+  buildWarrantyConfirmationSms,
+} from "../utils/twilio.server";
+
+const WEBSITE_URL = process.env.WEBSITE_URL || "https://geepas.com";
+
+/**
+ * Generate a unique discount code string.
+ */
+function generateDiscountCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "GEEPAS15-";
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+/**
+ * POST /api/warranty
+ *
+ * Full warranty registration flow:
+ * 1. Validate input
+ * 2. Normalize phone number
+ * 3. Resolve or create Shopify customer
+ * 4. Check reward eligibility (no stacking, no duplicates)
+ * 5. Save registration + products
+ * 6. Create Shopify discount code if eligible
+ * 7. Send SMS via Twilio
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  try {
+    const body = await request.json();
+
+    const {
+      shop,
+      firstName,
+      email,
+      phone,
+      city,
+      store,
+      purchaseDate,
+      invoiceNumber,
+      products,
+      isNewCustomer,
+    } = body;
+
+    // --- Validation ---
+    const errors: string[] = [];
+    if (!shop) errors.push("Shop is required.");
+    if (!firstName || firstName.trim().length < 2)
+      errors.push("First name is required (min 2 characters).");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errors.push("Valid email is required.");
+    if (!phone || phone.trim().length < 7)
+      errors.push("Valid phone number is required.");
+    if (!city) errors.push("City is required.");
+    if (!store) errors.push("Store is required.");
+    if (!purchaseDate) errors.push("Purchase date is required.");
+    if (!products || !Array.isArray(products) || products.length === 0)
+      errors.push("At least one product is required.");
+
+    if (errors.length > 0) {
+      return json({ errors }, { status: 400 });
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // --- Resolve Shopify Customer ---
+    let customerId: string;
+
+    try {
+      const { admin } = await unauthenticated.admin(shop);
+
+      console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
+      console.log("[api.warranty] Normalized phone:", normalizedPhone);
+
+      // Look up existing customer by phone
+      console.log("[api.warranty] Looking up customer by phone:", normalizedPhone);
+      const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
+      if (lookupResult) {
+        console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
+        customerId = lookupResult;
+      } else {
+        console.log("[api.warranty] Customer not found by phone. Checking email or creating new customer...");
+        customerId = await createOrUpdateShopifyCustomer(admin, {
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+        });
+        console.log("[api.warranty] Resolved customerId:", customerId);
+      }
+
+      // --- Check Reward Eligibility ---
+      // Rule: No stacking, no duplicates. Phone is source of truth.
+      const existingReward = await prisma.customerReward.findFirst({
+        where: {
+          shop,
+          phone: normalizedPhone,
+        },
+      });
+
+      // Save warranty registration
+      const registration = await prisma.warrantyRegistration.create({
+        data: {
+          shop,
+          customerId,
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+          city,
+          store,
+          purchaseDate: new Date(purchaseDate),
+          invoiceNumber: invoiceNumber?.trim() || null,
+          status: "pending",
+          products: {
+            create: products.map((p: any) => ({
+              productId: p.productId || null,
+              productTitle: p.productTitle,
+              sku: p.sku || null,
+              isManual: p.isManual || false,
+            })),
+          },
+        },
+        include: { products: true },
+      });
+
+      // --- Discount Code Generation ---
+      let discountCode: string | null = null;
+      let rewardCreated = false;
+
+      if (!existingReward) {
+        // Eligible for WARRANTY_15 — no prior reward of any type
+        discountCode = generateDiscountCode();
+
+        try {
+          // Create Shopify discount code via GraphQL
+          await createShopifyDiscountCode(admin, discountCode, customerId);
+          rewardCreated = true;
+        } catch (discountErr) {
+          console.error(
+            "[api.warranty] Failed to create Shopify discount:",
+            discountErr
+          );
+          // Continue — don't block registration because discount failed
+        }
+
+        if (rewardCreated) {
+          await prisma.customerReward.create({
+            data: {
+              shop,
+              phone: normalizedPhone,
+              customerId,
+              rewardType: "WARRANTY_15",
+              discountCode,
+            },
+          });
+        }
+      }
+
+      // --- SMS ---
+      const smsBody = buildWarrantyConfirmationSms(
+        firstName.trim(),
+        rewardCreated ? discountCode : null,
+        WEBSITE_URL
+      );
+
+      const smsResult = await sendSms(normalizedPhone, smsBody);
+
+      // Log SMS
+      await prisma.sMSLog.create({
+        data: {
+          shop,
+          phone: normalizedPhone,
+          registrationId: registration.id,
+          rewardId: rewardCreated
+            ? (
+                await prisma.customerReward.findFirst({
+                  where: {
+                    shop,
+                    phone: normalizedPhone,
+                    rewardType: "WARRANTY_15",
+                  },
+                })
+              )?.id || null
+            : null,
+          smsSent: smsResult.success,
+          smsSentAt: smsResult.success ? new Date() : null,
+          smsProviderResponse: smsResult.rawResponse || smsResult.error || null,
+        },
+      });
+
+      return json(
+        {
+          success: true,
+          registration: {
+            id: registration.id,
+            status: registration.status,
+            productsCount: registration.products.length,
+          },
+          reward: rewardCreated
+            ? { discountCode, type: "WARRANTY_15" }
+            : existingReward
+              ? { message: "Customer already has a reward on record." }
+              : null,
+          smsSent: smsResult.success,
+        },
+        { status: 201 }
+      );
+    } catch (shopifyErr: any) {
+      console.error("[api.warranty] Shopify/DB error:", shopifyErr);
+      return json(
+        {
+          error: "Failed to process warranty registration. Please try again later.",
+          debug: shopifyErr instanceof Error ? shopifyErr.message : shopifyErr,
+          stack: shopifyErr instanceof Error ? shopifyErr.stack : undefined,
+        },
+        { status: 500 }
+      );
+    }
+  } catch (error: any) {
+    console.error("[api.warranty] Parse error:", error);
+    return json(
+      { error: "Invalid request body." },
+      { status: 400 }
+    );
+  }
+};
+
+// ---- Helper: Lookup customer by phone ----
+async function lookupCustomerByPhone(
+  admin: any,
+  phone: string
+): Promise<string | null> {
+  const query = `#graphql
+    query customerByPhone($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+          }
+        }
+      }
+    }`;
+  const variables = { query: `phone:${phone}` };
+  console.log("[lookupCustomerByPhone] Shopify lookup query:", query, "variables:", variables);
+
+  const response = await admin.graphql(query, { variables });
+  const data = await response.json();
+  console.log("[lookupCustomerByPhone] Shopify response:", JSON.stringify(data, null, 2));
+
+  if (data?.errors) {
+    console.error("[lookupCustomerByPhone] GraphQL errors:", data.errors);
+    throw new Error(`Shopify lookup error: ${JSON.stringify(data.errors)}`);
+  }
+
+  const edges = data?.data?.customers?.edges || [];
+  return edges.length > 0 ? edges[0].node.id : null;
+}
+
+// ---- Helper: Create or update Shopify Customer ----
+async function createOrUpdateShopifyCustomer(
+  admin: any,
+  input: { firstName: string; email: string; phone: string }
+): Promise<string> {
+  // First check if email already exists on another customer
+  const queryEmail = `#graphql
+    query customerByEmail($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+            phone
+          }
+        }
+      }
+    }`;
+  const variablesEmail = { query: `email:${input.email}` };
+  console.log("[createOrUpdateShopifyCustomer] Checking existing email query:", queryEmail, "variables:", variablesEmail);
+
+  const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
+  const emailCheckData = await emailCheckResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Email check response:", JSON.stringify(emailCheckData, null, 2));
+
+  if (emailCheckData?.errors) {
+    console.error("[createOrUpdateShopifyCustomer] Email check GraphQL errors:", emailCheckData.errors);
+  }
+
+  const existingByEmail = emailCheckData?.data?.customers?.edges || [];
+
+  if (existingByEmail.length > 0) {
+    const existing = existingByEmail[0].node;
+    console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
+
+    // If email exists but phone is different, update the existing customer's phone
+    if (existing.phone !== input.phone) {
+      console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
+      const mutationUpdate = `#graphql
+        mutation customerUpdate($input: CustomerInput!) {
+          customerUpdate(input: $input) {
+            customer {
+              id
+            }
+            userErrors {
+              field
+              message
+            }
+          }
+        }`;
+      const variablesUpdate = {
+        input: {
+          id: existing.id,
+          phone: input.phone,
+        },
+      };
+      console.log("[createOrUpdateShopifyCustomer] Update mutation:", mutationUpdate, "variables:", variablesUpdate);
+
+      const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
+      const updateData = await updateResponse.json();
+      console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
+
+      const updateErrors = updateData?.data?.customerUpdate?.userErrors || [];
+      if (updateErrors.length > 0) {
+        console.error("[createOrUpdateShopifyCustomer] Update phone user errors:", updateErrors);
+      }
+    }
+
+    return existing.id;
+  }
+
+  // Create new customer
+  console.log("[createOrUpdateShopifyCustomer] Creating new customer with details:", input);
+  const mutationCreate = `#graphql
+    mutation customerCreate($input: CustomerInput!) {
+      customerCreate(input: $input) {
+        customer {
+          id
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`;
+  const variablesCreate = {
+    input: {
+      firstName: input.firstName,
+      email: input.email,
+      phone: input.phone,
+    },
+  };
+  console.log("[createOrUpdateShopifyCustomer] Create mutation:", mutationCreate, "variables:", variablesCreate);
+
+  const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
+  const createData = await createResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Create response:", JSON.stringify(createData, null, 2));
+
+  const userErrors = createData?.data?.customerCreate?.userErrors || [];
+  if (userErrors.length > 0) {
+    console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
+    // If customer creation fails (e.g. email/phone taken), try lookup by phone
+    console.log("[createOrUpdateShopifyCustomer] Customer creation failed. Falling back to lookup by phone:", input.phone);
+    const fallbackId = await lookupCustomerByPhone(
+      admin,
+      input.phone
+    );
+    if (fallbackId) {
+      console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
+      return fallbackId;
+    }
+    throw new Error(
+      `Customer creation failed: ${userErrors.map((e: any) => e.message).join(", ")}`
+    );
+  }
+
+  const newCustomerId = createData?.data?.customerCreate?.customer?.id;
+  if (!newCustomerId) {
+    throw new Error("Customer creation returned no ID.");
+  }
+
+  console.log("[createOrUpdateShopifyCustomer] Customer created successfully. ID:", newCustomerId);
+
+  // Send activation email invite
+  try {
+    const mutationInvite = `#graphql
+      mutation customerSendAccountInviteEmail($customerId: ID!) {
+        customerSendAccountInviteEmail(customerId: $customerId) {
+          customer {
+            id
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }`;
+    console.log("[createOrUpdateShopifyCustomer] Sending account invite for ID:", newCustomerId);
+    const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
+    const inviteData = await inviteResponse.json();
+    console.log("[createOrUpdateShopifyCustomer] Send invite response:", JSON.stringify(inviteData, null, 2));
+    const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
+    if (inviteErrors.length > 0) {
+      console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
+    }
+  } catch (inviteErr) {
+    // Non-critical — don't block the flow
+    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed:", inviteErr);
+  }
+
+  return newCustomerId;
+}
+
+// ---- Helper: Create Shopify discount code ----
+async function createShopifyDiscountCode(
+  admin: any,
+  code: string,
+  customerId: string
+): Promise<void> {
+  // Create a basic discount code using the discountCodeBasicCreate mutation
+  const startsAt = new Date().toISOString();
+
+  const response = await admin.graphql(
+    `#graphql
+    mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+        codeDiscountNode {
+          id
+          codeDiscount {
+            ... on DiscountCodeBasic {
+              codes(first: 1) {
+                edges {
+                  node {
+                    code
+                  }
+                }
+              }
+            }
+          }
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }`,
+    {
+      variables: {
+        basicCodeDiscount: {
+          title: `Warranty 15% - ${code}`,
+          code,
+          startsAt,
+          customerSelection: {
+            all: true,
+          },
+          customerGets: {
+            value: {
+              percentage: 0.15,
+            },
+            items: {
+              all: true,
+            },
+          },
+          usageLimit: 1,
+        },
+      },
+    }
+  );
+
+  const data = await response.json();
+  const userErrors =
+    data?.data?.discountCodeBasicCreate?.userErrors || [];
+
+  if (userErrors.length > 0) {
+    console.error("[discount] Creation errors:", userErrors);
+    throw new Error(userErrors.map((e: any) => e.message).join(", "));
+  }
+}
+</file>
+
+<file path="app/routes/app._index.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
+  const url = new URL(request.url);
+  return redirect(`/app/warranties${url.search}`);
+};
+</file>
+
+<file path="app/routes/app.additional.tsx">
+import {
+  Box,
+  Card,
+  Layout,
+  Link,
+  List,
+  Page,
+  Text,
+  BlockStack,
+} from "@shopify/polaris";
+import { TitleBar } from "@shopify/app-bridge-react";
+
+export default function AdditionalPage() {
+  return (
+    <Page>
+      <TitleBar title="Additional page" />
+      <Layout>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text as="p" variant="bodyMd">
+                The app template comes with an additional page which
+                demonstrates how to create multiple pages within app navigation
+                using{" "}
+                <Link
+                  url="https://shopify.dev/docs/apps/tools/app-bridge"
+                  target="_blank"
+                  removeUnderline
+                >
+                  App Bridge
+                </Link>
+                .
+              </Text>
+              <Text as="p" variant="bodyMd">
+                To create your own page and have it show up in the app
+                navigation, add a page inside <Code>app/routes</Code>, and a
+                link to it in the <Code>&lt;NavMenu&gt;</Code> component found
+                in <Code>app/routes/app.jsx</Code>.
+              </Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text as="h2" variant="headingMd">
+                Resources
+              </Text>
+              <List>
+                <List.Item>
+                  <Link
+                    url="https://shopify.dev/docs/apps/design-guidelines/navigation#app-nav"
+                    target="_blank"
+                    removeUnderline
+                  >
+                    App nav best practices
+                  </Link>
+                </List.Item>
+              </List>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </Page>
+  );
+}
+
+function Code({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      as="span"
+      padding="025"
+      paddingInlineStart="100"
+      paddingInlineEnd="100"
+      background="bg-surface-active"
+      borderWidth="025"
+      borderColor="border"
+      borderRadius="100"
+    >
+      <code>{children}</code>
+    </Box>
+  );
+}
+</file>
+
+<file path="app/routes/app.tsx">
+import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
+import { boundary } from "@shopify/shopify-app-remix/server";
+import { AppProvider } from "@shopify/shopify-app-remix/react";
+import { NavMenu } from "@shopify/app-bridge-react";
+import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+
+import { authenticate } from "../shopify.server";
+
+export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
+
+  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+};
+
+export default function App() {
+  const { apiKey } = useLoaderData<typeof loader>();
+
+  return (
+    <AppProvider isEmbeddedApp apiKey={apiKey}>
+      <NavMenu>
+        <Link to="/app" rel="home">
+          Home
+        </Link>
+        <Link to="/app/warranties">Warranties</Link>
+        <Link to="/app/additional">Additional page</Link>
+      </NavMenu>
+      <Outlet />
+    </AppProvider>
+  );
+}
+
+// Shopify needs Remix to catch some thrown responses, so that their headers are included in the response.
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
+}
+
+export const headers: HeadersFunction = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
+</file>
+
+<file path="app/routes/app.warranties.tsx">
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import {
+  useLoaderData,
+  useSearchParams,
+  useSubmit,
+} from "@remix-run/react";
+import {
+  Page,
+  Layout,
+  Card,
+  IndexTable,
+  Text,
+  Badge,
+  IndexFilters,
+  useSetIndexFiltersMode,
+  useIndexResourceState,
+  EmptySearchResult,
+  Modal,
+  BlockStack,
+  InlineStack,
+  Button,
+  Divider,
+  Tag,
+} from "@shopify/polaris";
+import { useState, useCallback } from "react";
+import { authenticate } from "../shopify.server";
+import prisma from "../db.server";
+
+// ---------- Loader ----------
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+
+  const url = new URL(request.url);
+  const search = url.searchParams.get("search") || "";
+  const status = url.searchParams.get("status") || "all";
+  const page = parseInt(url.searchParams.get("page") || "1", 10);
+  const pageSize = 20;
+
+  // Build where clause — always scoped to current shop
+  const where: any = { shop };
+
+  if (status !== "all") {
+    where.status = status;
+  }
+
+  if (search) {
+    where.OR = [
+      { firstName: { contains: search } },
+      { email: { contains: search } },
+      { phone: { contains: search } },
+      { invoiceNumber: { contains: search } },
+      { city: { contains: search } },
+      { store: { contains: search } },
+      {
+        products: {
+          some: { productTitle: { contains: search } },
+        },
+      },
+    ];
+  }
+
+  const [registrations, total] = await Promise.all([
+    prisma.warrantyRegistration.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        products: true,
+        smsLogs: { orderBy: { smsSentAt: "desc" }, take: 1 },
+      },
+    }),
+    prisma.warrantyRegistration.count({ where }),
+  ]);
+
+  const totalPages = Math.ceil(total / pageSize);
+
+  // Fetch rewards for phone numbers in this page
+  const phones = [...new Set(registrations.map((r) => r.phone))];
+  const rewards =
+    phones.length > 0
+      ? await prisma.customerReward.findMany({
+          where: { shop, phone: { in: phones } },
+        })
+      : [];
+
+  return json({
+    registrations: registrations.map((r) => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+      purchaseDate: r.purchaseDate.toISOString(),
+      smsLogs: r.smsLogs.map((s) => ({
+        ...s,
+        smsSentAt: s.smsSentAt?.toISOString() || null,
+      })),
+    })),
+    rewards: rewards.map((r) => ({
+      ...r,
+      issuedAt: r.issuedAt.toISOString(),
+      sentAt: r.sentAt?.toISOString() || null,
+    })),
+    total,
+    page,
+    totalPages,
+    search,
+    status,
+  });
+};
+
+// ---------- Action (status updates) ----------
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  const shop = session.shop;
+
+  const formData = await request.formData();
+  const id = formData.get("id") as string;
+  const newStatus = formData.get("status") as string;
+
+  if (!id || !newStatus) {
+    return json({ error: "Missing fields" }, { status: 400 });
+  }
+
+  // Ensure the registration belongs to this shop
+  const registration = await prisma.warrantyRegistration.findFirst({
+    where: { id, shop },
+  });
+
+  if (!registration) {
+    return json({ error: "Registration not found" }, { status: 404 });
+  }
+
+  await prisma.warrantyRegistration.update({
+    where: { id },
+    data: { status: newStatus },
+  });
+
+  return json({ success: true });
+};
+
+// ---------- Component ----------
+export default function WarrantiesPage() {
+  const { registrations, rewards, total, page, totalPages, search, status } =
+    useLoaderData<typeof loader>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const submit = useSubmit();
+
+  // Search & filter state
+  const [queryValue, setQueryValue] = useState(search);
+  const [statusFilter, setStatusFilter] = useState(status);
+
+  // Detail modal state
+  const [selectedReg, setSelectedReg] = useState<
+    (typeof registrations)[number] | null
+  >(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  const { mode, setMode } = useSetIndexFiltersMode();
+
+  const resourceName = {
+    singular: "registration",
+    plural: "registrations",
+  };
+
+  const { selectedResources, allResourcesSelected, handleSelectionChange } =
+    useIndexResourceState(registrations);
+
+  // ---------- Handlers ----------
+  const handleSearch = useCallback((value: string) => {
+    setQueryValue(value);
+  }, []);
+
+  const handleSearchClear = useCallback(() => {
+    setQueryValue("");
+    const params = new URLSearchParams(searchParams);
+    params.delete("search");
+    params.set("page", "1");
+    setSearchParams(params);
+  }, [searchParams, setSearchParams]);
+
+  const handleSearchSubmit = useCallback(() => {
+    const params = new URLSearchParams(searchParams);
+    if (queryValue) {
+      params.set("search", queryValue);
+    } else {
+      params.delete("search");
+    }
+    params.set("page", "1");
+    setSearchParams(params);
+  }, [queryValue, searchParams, setSearchParams]);
+
+  const handleStatusChange = useCallback(
+    (value: string) => {
+      setStatusFilter(value);
+      const params = new URLSearchParams(searchParams);
+      if (value === "all") {
+        params.delete("status");
+      } else {
+        params.set("status", value);
+      }
+      params.set("page", "1");
+      setSearchParams(params);
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const handleStatusUpdate = useCallback(
+    (id: string, newStatus: string) => {
+      const formData = new FormData();
+      formData.set("id", id);
+      formData.set("status", newStatus);
+      submit(formData, { method: "post" });
+
+      // Optimistically update the selected registration in the modal
+      if (selectedReg && selectedReg.id === id) {
+        setSelectedReg({ ...selectedReg, status: newStatus });
+      }
+    },
+    [submit, selectedReg]
+  );
+
+  const handlePagination = useCallback(
+    (direction: "next" | "prev") => {
+      const newPage = direction === "next" ? page + 1 : page - 1;
+      const params = new URLSearchParams(searchParams);
+      params.set("page", String(newPage));
+      setSearchParams(params);
+    },
+    [page, searchParams, setSearchParams]
+  );
+
+  // ---------- Helpers ----------
+  const statusBadge = (s: string) => {
+    switch (s) {
+      case "approved":
+        return <Badge tone="success">Approved</Badge>;
+      case "rejected":
+        return <Badge tone="critical">Rejected</Badge>;
+      default:
+        return <Badge tone="attention">Pending</Badge>;
+    }
+  };
+
+  const getRewardsForPhone = (phone: string) =>
+    rewards.filter((r) => r.phone === phone);
+
+  const rewardTypeBadge = (type: string) => {
+    switch (type) {
+      case "WELCOME_10":
+        return <Badge tone="info">Welcome 10%</Badge>;
+      case "WARRANTY_15":
+        return <Badge tone="success">Warranty 15%</Badge>;
+      default:
+        return <Badge>{type}</Badge>;
+    }
+  };
+
+  // ---------- Table rows ----------
+  const rowMarkup = registrations.map((reg, index) => {
+    const productNames = reg.products
+      .map((p) => p.productTitle)
+      .join(", ");
+    const truncatedProducts =
+      productNames.length > 40
+        ? productNames.slice(0, 40) + "…"
+        : productNames;
+
+    return (
+      <IndexTable.Row
+        id={reg.id}
+        key={reg.id}
+        selected={selectedResources.includes(reg.id)}
+        position={index}
+        onClick={() => {
+          setSelectedReg(reg);
+          setDetailModalOpen(true);
+        }}
+      >
+        <IndexTable.Cell>
+          <Text variant="bodyMd" fontWeight="bold" as="span">
+            {reg.firstName}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{reg.phone}</IndexTable.Cell>
+        <IndexTable.Cell>{reg.email}</IndexTable.Cell>
+        <IndexTable.Cell>{reg.city}</IndexTable.Cell>
+        <IndexTable.Cell>{reg.store}</IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text variant="bodySm" as="span">
+            {truncatedProducts}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>{reg.invoiceNumber || "—"}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(reg.purchaseDate).toLocaleDateString()}
+        </IndexTable.Cell>
+        <IndexTable.Cell>{statusBadge(reg.status)}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {new Date(reg.createdAt).toLocaleDateString()}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
+
+  const emptyState = (
+    <EmptySearchResult
+      title="No warranty registrations found"
+      description="Try changing the filters or search term"
+      withIllustration
+    />
+  );
+
+  // ---------- Filter tabs ----------
+  const tabs = [
+    { id: "all", content: "All", accessibilityLabel: "All registrations" },
+    { id: "pending", content: "Pending" },
+    { id: "approved", content: "Approved" },
+    { id: "rejected", content: "Rejected" },
+  ];
+
+  const selectedTab = tabs.findIndex((t) => t.id === statusFilter);
+
+  // ---------- Selected reg rewards ----------
+  const selectedRegRewards = selectedReg
+    ? getRewardsForPhone(selectedReg.phone)
+    : [];
+
+  return (
+    <Page
+      title="Warranty Registrations"
+      subtitle={`${total} total registrations`}
+      fullWidth
+    >
+      <Layout>
+        <Layout.Section>
+          <Card padding="0">
+            <IndexFilters
+              queryValue={queryValue}
+              queryPlaceholder="Search by name, email, phone, city, product..."
+              onQueryChange={handleSearch}
+              onQueryClear={handleSearchClear}
+              tabs={tabs}
+              selected={selectedTab >= 0 ? selectedTab : 0}
+              onSelect={(index) => handleStatusChange(tabs[index].id)}
+              filters={[]}
+              onClearAll={() => {}}
+              mode={mode}
+              setMode={setMode}
+              cancelAction={{
+                onAction: () => {},
+              }}
+            />
+            <IndexTable
+              resourceName={resourceName}
+              itemCount={registrations.length}
+              selectedItemsCount={
+                allResourcesSelected ? "All" : selectedResources.length
+              }
+              onSelectionChange={handleSelectionChange}
+              headings={[
+                { title: "Name" },
+                { title: "Phone" },
+                { title: "Email" },
+                { title: "City" },
+                { title: "Store" },
+                { title: "Products" },
+                { title: "Invoice #" },
+                { title: "Purchase Date" },
+                { title: "Status" },
+                { title: "Submitted" },
+              ]}
+              emptyState={emptyState}
+              pagination={{
+                hasNext: page < totalPages,
+                hasPrevious: page > 1,
+                onNext: () => handlePagination("next"),
+                onPrevious: () => handlePagination("prev"),
+              }}
+            >
+              {rowMarkup}
+            </IndexTable>
+          </Card>
+        </Layout.Section>
+      </Layout>
+
+      {/* ---------- Detail Modal ---------- */}
+      {selectedReg && (
+        <Modal
+          open={detailModalOpen}
+          onClose={() => setDetailModalOpen(false)}
+          title="Registration Details"
+          size="large"
+        >
+          <Modal.Section>
+            <BlockStack gap="400">
+              {/* Customer Info */}
+              <Text as="h3" variant="headingMd">
+                Customer Information
+              </Text>
+              <InlineStack gap="400" wrap>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Name
+                  </Text>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {selectedReg.firstName}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Email
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {selectedReg.email}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Phone
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {selectedReg.phone}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Shopify Customer
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {selectedReg.customerId}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+
+              <Divider />
+
+              {/* Purchase Info */}
+              <Text as="h3" variant="headingMd">
+                Purchase Details
+              </Text>
+              <InlineStack gap="400" wrap>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    City
+                  </Text>
+                  <Text as="span" variant="bodyMd" fontWeight="semibold">
+                    {selectedReg.city}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Store
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {selectedReg.store}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Purchase Date
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {new Date(selectedReg.purchaseDate).toLocaleDateString()}
+                  </Text>
+                </BlockStack>
+                <BlockStack gap="100">
+                  <Text as="span" variant="bodySm" tone="subdued">
+                    Invoice #
+                  </Text>
+                  <Text as="span" variant="bodyMd">
+                    {selectedReg.invoiceNumber || "Not provided"}
+                  </Text>
+                </BlockStack>
+              </InlineStack>
+
+              <Divider />
+
+              {/* Products */}
+              <Text as="h3" variant="headingMd">
+                Products ({selectedReg.products.length})
+              </Text>
+              <BlockStack gap="200">
+                {selectedReg.products.map((p) => (
+                  <InlineStack key={p.id} gap="200" align="start" blockAlign="center">
+                    <Tag>
+                      {p.isManual ? "Manual" : "Catalog"}
+                    </Tag>
+                    <Text as="span" variant="bodyMd" fontWeight="semibold">
+                      {p.productTitle}
+                    </Text>
+                    {p.sku && (
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        SKU: {p.sku}
+                      </Text>
+                    )}
+                  </InlineStack>
+                ))}
+              </BlockStack>
+
+              <Divider />
+
+              {/* Rewards */}
+              <Text as="h3" variant="headingMd">
+                Customer Rewards
+              </Text>
+              {selectedRegRewards.length > 0 ? (
+                <BlockStack gap="200">
+                  {selectedRegRewards.map((r) => (
+                    <InlineStack key={r.id} gap="300" align="start" blockAlign="center">
+                      {rewardTypeBadge(r.rewardType)}
+                      <Text as="span" variant="bodyMd" fontWeight="semibold">
+                        {r.discountCode}
+                      </Text>
+                      <Text as="span" variant="bodySm" tone="subdued">
+                        Issued{" "}
+                        {new Date(r.issuedAt).toLocaleDateString()}
+                      </Text>
+                    </InlineStack>
+                  ))}
+                </BlockStack>
+              ) : (
+                <Text as="span" variant="bodySm" tone="subdued">
+                  No rewards issued for this customer.
+                </Text>
+              )}
+
+              <Divider />
+
+              {/* SMS Status */}
+              <Text as="h3" variant="headingMd">
+                SMS Status
+              </Text>
+              {selectedReg.smsLogs && selectedReg.smsLogs.length > 0 ? (
+                <InlineStack gap="200" align="start" blockAlign="center">
+                  <Badge
+                    tone={
+                      selectedReg.smsLogs[0].smsSent
+                        ? "success"
+                        : "critical"
+                    }
+                  >
+                    {selectedReg.smsLogs[0].smsSent ? "Sent" : "Failed"}
+                  </Badge>
+                  {selectedReg.smsLogs[0].smsSentAt && (
+                    <Text as="span" variant="bodySm" tone="subdued">
+                      {new Date(
+                        selectedReg.smsLogs[0].smsSentAt
+                      ).toLocaleString()}
+                    </Text>
+                  )}
+                </InlineStack>
+              ) : (
+                <Text as="span" variant="bodySm" tone="subdued">
+                  No SMS logs.
+                </Text>
+              )}
+
+              <Divider />
+
+              {/* Status + Actions */}
+              <Text as="h3" variant="headingMd">
+                Status
+              </Text>
+              <InlineStack gap="300" align="start" blockAlign="center">
+                {statusBadge(selectedReg.status)}
+                <Text as="span" variant="bodySm" tone="subdued">
+                  Submitted{" "}
+                  {new Date(selectedReg.createdAt).toLocaleString()}
+                </Text>
+              </InlineStack>
+
+              <InlineStack gap="300">
+                {selectedReg.status !== "approved" && (
+                  <Button
+                    variant="primary"
+                    tone="success"
+                    onClick={() =>
+                      handleStatusUpdate(selectedReg.id, "approved")
+                    }
+                  >
+                    Approve
+                  </Button>
+                )}
+                {selectedReg.status !== "rejected" && (
+                  <Button
+                    variant="primary"
+                    tone="critical"
+                    onClick={() =>
+                      handleStatusUpdate(selectedReg.id, "rejected")
+                    }
+                  >
+                    Reject
+                  </Button>
+                )}
+                {selectedReg.status !== "pending" && (
+                  <Button
+                    onClick={() =>
+                      handleStatusUpdate(selectedReg.id, "pending")
+                    }
+                  >
+                    Reset to Pending
+                  </Button>
+                )}
+              </InlineStack>
+            </BlockStack>
+          </Modal.Section>
+        </Modal>
+      )}
+    </Page>
+  );
+}
+</file>
+
+<file path="app/routes/auth.$.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
+
+  return null;
+};
+</file>
+
+<file path="app/routes/auth.login/error.server.tsx">
+import type { LoginError } from "@shopify/shopify-app-remix/server";
+import { LoginErrorType } from "@shopify/shopify-app-remix/server";
+
+interface LoginErrorMessage {
+  shop?: string;
+}
+
+export function loginErrorMessage(loginErrors: LoginError): LoginErrorMessage {
+  if (loginErrors?.shop === LoginErrorType.MissingShop) {
+    return { shop: "Please enter your shop domain to log in" };
+  } else if (loginErrors?.shop === LoginErrorType.InvalidShop) {
+    return { shop: "Please enter a valid shop domain to log in" };
+  }
+
+  return {};
+}
+</file>
+
+<file path="app/routes/auth.login/route.tsx">
+import { useState } from "react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import {
+  AppProvider as PolarisAppProvider,
+  Button,
+  Card,
+  FormLayout,
+  Page,
+  Text,
+  TextField,
+} from "@shopify/polaris";
+import polarisTranslations from "@shopify/polaris/locales/en.json";
+import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+
+import { login } from "../../shopify.server";
+
+import { loginErrorMessage } from "./error.server";
+
+export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const errors = loginErrorMessage(await login(request));
+
+  return { errors, polarisTranslations };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const errors = loginErrorMessage(await login(request));
+
+  return {
+    errors,
+  };
+};
+
+export default function Auth() {
+  const loaderData = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const [shop, setShop] = useState("");
+  const { errors } = actionData || loaderData;
+
+  return (
+    <PolarisAppProvider i18n={loaderData.polarisTranslations}>
+      <Page>
+        <Card>
+          <Form method="post">
+            <FormLayout>
+              <Text variant="headingMd" as="h2">
+                Log in
+              </Text>
+              <TextField
+                type="text"
+                name="shop"
+                label="Shop domain"
+                helpText="example.myshopify.com"
+                value={shop}
+                onChange={setShop}
+                autoComplete="on"
+                error={errors.shop}
+              />
+              <Button submit>Log in</Button>
+            </FormLayout>
+          </Form>
+        </Card>
+      </Page>
+    </PolarisAppProvider>
+  );
+}
+</file>
+
+<file path="app/routes/public.warranty-register.tsx">
+import type { MetaFunction } from "@remix-run/node";
+import { useState, useCallback, useEffect, useRef } from "react";
+
+export const meta: MetaFunction = () => {
+  return [
+    { title: "Geepas Warranty Registration" },
+    { name: "description", content: "Register your Geepas product warranty" },
+  ];
+};
+
+// ---- Iraqi Cities ----
+const IRAQI_CITIES = [
+  "Baghdad",
+  "Basra",
+  "Erbil",
+  "Sulaymaniyah",
+  "Mosul",
+  "Kirkuk",
+  "Najaf",
+  "Karbala",
+  "Nasiriyah",
+  "Amarah",
+  "Diwaniyah",
+  "Kut",
+  "Hillah",
+  "Samawah",
+  "Ramadi",
+  "Fallujah",
+  "Tikrit",
+  "Baqubah",
+  "Duhok",
+  "Halabja",
+  "Zakho",
+];
+
+// ---- Types ----
+type Step = "phone" | "details" | "products" | "review" | "success";
+
+interface CustomerData {
+  exists: boolean;
+  lookupFailed?: boolean;
+  customerId?: string;
+  firstName?: string;
+  email?: string;
+}
+
+interface ProductEntry {
+  id: string; // local unique key
+  productId: string | null; // Shopify GID or null
+  productTitle: string;
+  sku: string | null;
+  isManual: boolean;
+}
+
+interface ShopifyProduct {
+  id: string;
+  title: string;
+  sku: string | null;
+}
+
+interface FormErrors {
+  [key: string]: string;
+}
+
+// ---- Component ----
+export default function WarrantyRegister() {
+  // Get shop from URL params
+  const [shop, setShop] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setShop(params.get("shop") || "");
+  }, []);
+
+  // Step management
+  const [currentStep, setCurrentStep] = useState<Step>("phone");
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [globalError, setGlobalError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Step 1: Phone lookup
+  const [phone, setPhone] = useState("");
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [customerData, setCustomerData] = useState<CustomerData | null>(null);
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+
+  // Step 2: Customer details
+  const [firstName, setFirstName] = useState("");
+  const [email, setEmail] = useState("");
+  const [city, setCity] = useState("");
+  const [storeName, setStoreName] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+
+  // Step 3: Products
+  const [products, setProducts] = useState<ProductEntry[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<ShopifyProduct[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualTitle, setManualTitle] = useState("");
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Success data
+  const [successData, setSuccessData] = useState<any>(null);
+
+  // ---- Phone Lookup ----
+  const handlePhoneLookup = useCallback(async () => {
+    if (!phone || phone.trim().length < 7) {
+      setErrors({ phone: "Please enter a valid phone number." });
+      return;
+    }
+    if (!shop) {
+      setGlobalError("Shop parameter is missing from the URL.");
+      return;
+    }
+
+    setIsLookingUp(true);
+    setGlobalError("");
+    setErrors({});
+
+    try {
+      const res = await fetch(
+        `/api/customer-lookup?phone=${encodeURIComponent(phone)}&shop=${encodeURIComponent(shop)}`
+      );
+      
+      if (!res.ok) {
+        console.warn("Lookup response not OK, transitioning to details step as a new customer.");
+        setCustomerData({ exists: false, lookupFailed: true });
+        setIsNewCustomer(true);
+        setFirstName("");
+        setEmail("");
+        setCurrentStep("details");
+        return;
+      }
+
+      const data = await res.json();
+      setCustomerData(data);
+
+      if (data.exists) {
+        setIsNewCustomer(false);
+        setFirstName(data.firstName || "");
+        setEmail(data.email || "");
+      } else {
+        setIsNewCustomer(true);
+        setFirstName("");
+        setEmail("");
+      }
+
+      setCurrentStep("details");
+    } catch (err) {
+      console.warn("Lookup request failed with network error, transitioning to details step.", err);
+      setCustomerData({ exists: false, lookupFailed: true });
+      setIsNewCustomer(true);
+      setFirstName("");
+      setEmail("");
+      setCurrentStep("details");
+    } finally {
+      setIsLookingUp(false);
+    }
+  }, [phone, shop]);
+
+  // ---- Product Search ----
+  const handleProductSearch = useCallback(
+    (query: string) => {
+      setProductSearch(query);
+
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+
+      if (query.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      searchTimeoutRef.current = setTimeout(async () => {
+        setIsSearching(true);
+        try {
+          const res = await fetch(
+            `/api/products?shop=${encodeURIComponent(shop)}&search=${encodeURIComponent(query)}`
+          );
+          const data = await res.json();
+          setSearchResults(data.products || []);
+        } catch {
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 400);
+    },
+    [shop]
+  );
+
+  const addProduct = useCallback((product: ShopifyProduct) => {
+    setProducts((prev) => {
+      // Avoid duplicates
+      if (prev.some((p) => p.productId === product.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          productId: product.id,
+          productTitle: product.title,
+          sku: product.sku,
+          isManual: false,
+        },
+      ];
+    });
+    setProductSearch("");
+    setSearchResults([]);
+  }, []);
+
+  const addManualProduct = useCallback(() => {
+    if (!manualTitle.trim()) return;
+    setProducts((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        productId: null,
+        productTitle: manualTitle.trim(),
+        sku: null,
+        isManual: true,
+      },
+    ]);
+    setManualTitle("");
+    setShowManualEntry(false);
+  }, [manualTitle]);
+
+  const removeProduct = useCallback((id: string) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // ---- Step Validation ----
+  const validateDetails = useCallback((): boolean => {
+    const newErrors: FormErrors = {};
+    if (!firstName.trim() || firstName.trim().length < 2)
+      newErrors.firstName = "First name is required.";
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      newErrors.email = "Valid email is required.";
+    if (!city) newErrors.city = "City is required.";
+    if (!storeName.trim()) newErrors.store = "Store name is required.";
+    if (!purchaseDate) newErrors.purchaseDate = "Purchase date is required.";
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [firstName, email, city, storeName, purchaseDate]);
+
+  const validateProducts = useCallback((): boolean => {
+    if (products.length === 0) {
+      setErrors({ products: "Add at least one product." });
+      return false;
+    }
+    setErrors({});
+    return true;
+  }, [products]);
+
+  // ---- Submit ----
+  const handleSubmit = useCallback(async () => {
+    setIsSubmitting(true);
+    setGlobalError("");
+
+    try {
+      const payload = {
+        shop,
+        firstName: firstName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        city,
+        store: storeName.trim(),
+        purchaseDate,
+        invoiceNumber: invoiceNumber.trim() || null,
+        isNewCustomer,
+        products: products.map((p) => ({
+          productId: p.productId,
+          productTitle: p.productTitle,
+          sku: p.sku,
+          isManual: p.isManual,
+        })),
+      };
+
+      const res = await fetch("/api/warranty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        if (result.errors) {
+          setGlobalError(result.errors.join(", "));
+        } else {
+          setGlobalError(result.error || "Something went wrong.");
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSuccessData(result);
+      setCurrentStep("success");
+    } catch {
+      setGlobalError("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    shop,
+    firstName,
+    email,
+    phone,
+    city,
+    storeName,
+    purchaseDate,
+    invoiceNumber,
+    isNewCustomer,
+    products,
+  ]);
+
+  // ---- Reset ----
+  const handleReset = useCallback(() => {
+    setCurrentStep("phone");
+    setPhone("");
+    setCustomerData(null);
+    setIsNewCustomer(false);
+    setFirstName("");
+    setEmail("");
+    setCity("");
+    setStoreName("");
+    setPurchaseDate("");
+    setInvoiceNumber("");
+    setProducts([]);
+    setSuccessData(null);
+    setErrors({});
+    setGlobalError("");
+  }, []);
+
+  // ---- Progress Bar ----
+  const steps: Step[] = ["phone", "details", "products", "review"];
+  const stepLabels = ["Phone", "Details", "Products", "Review"];
+  const currentIndex = steps.indexOf(currentStep);
+
+  // ---- Render ----
+  return (
+    <div style={styles.page}>
+      <div style={styles.card}>
+        {/* Header */}
+        <div style={styles.header}>
+          <h1 style={styles.title}>Warranty Registration</h1>
+          <p style={styles.subtitle}>
+            Register your Geepas product to activate your warranty coverage
+          </p>
+        </div>
+
+        {/* Progress Bar */}
+        {currentStep !== "success" && (
+          <div style={styles.progressContainer}>
+            {steps.map((step, i) => (
+              <div key={step} style={styles.progressStep}>
+                <div
+                  style={{
+                    ...styles.progressDot,
+                    ...(i <= currentIndex
+                      ? styles.progressDotActive
+                      : {}),
+                  }}
+                >
+                  {i < currentIndex ? "✓" : i + 1}
+                </div>
+                <span
+                  style={{
+                    ...styles.progressLabel,
+                    ...(i <= currentIndex
+                      ? styles.progressLabelActive
+                      : {}),
+                  }}
+                >
+                  {stepLabels[i]}
+                </span>
+                {i < steps.length - 1 && (
+                  <div
+                    style={{
+                      ...styles.progressLine,
+                      ...(i < currentIndex
+                        ? styles.progressLineActive
+                        : {}),
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {globalError && <div style={styles.globalError}>{globalError}</div>}
+
+        {/* ---- STEP: Phone Lookup ---- */}
+        {currentStep === "phone" && (
+          <div style={styles.stepContent}>
+            <h2 style={styles.stepTitle}>Enter your mobile number</h2>
+            <p style={styles.stepDesc}>
+              We'll check if you already have an account with us.
+            </p>
+            <div style={styles.field}>
+              <label htmlFor="reg-phone" style={styles.label}>
+                Mobile Number <span style={styles.required}>*</span>
+              </label>
+              <input
+                id="reg-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  setErrors((prev) => {
+                    const n = { ...prev };
+                    delete n.phone;
+                    return n;
+                  });
+                }}
+                placeholder="07XX XXX XXXX"
+                style={{
+                  ...styles.input,
+                  ...(errors.phone ? styles.inputError : {}),
+                }}
+              />
+              {errors.phone && <p style={styles.error}>{errors.phone}</p>}
+            </div>
+            <button
+              style={{
+                ...styles.button,
+                ...(isLookingUp ? styles.buttonDisabled : {}),
+              }}
+              disabled={isLookingUp}
+              onClick={handlePhoneLookup}
+            >
+              {isLookingUp ? "Looking up..." : "Continue"}
+            </button>
+          </div>
+        )}
+
+        {/* ---- STEP: Customer Details ---- */}
+        {currentStep === "details" && (
+          <div style={styles.stepContent}>
+            {/* Customer status banner */}
+            {customerData?.exists ? (
+              <div style={styles.successBanner}>
+                <span style={styles.bannerIcon}>✓</span>
+                Welcome back! We found your account.
+              </div>
+            ) : customerData?.lookupFailed ? (
+              <div style={styles.infoBanner}>
+                <span style={styles.bannerIcon}>ℹ</span>
+                We couldn't verify your account at the moment. You can continue and we'll create or update your account during registration.
+              </div>
+            ) : (
+              <div style={styles.infoBanner}>
+                <span style={styles.bannerIcon}>ℹ</span>
+                No existing account found. A new account will be created automatically when you submit your warranty registration.
+              </div>
+            )}
+
+            <div style={styles.form}>
+              {/* Name */}
+              <div style={styles.field}>
+                <label htmlFor="reg-firstName" style={styles.label}>
+                  First Name <span style={styles.required}>*</span>
+                </label>
+                <input
+                  id="reg-firstName"
+                  type="text"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="Your first name"
+                  readOnly={customerData?.exists && !!firstName}
+                  style={{
+                    ...styles.input,
+                    ...(errors.firstName ? styles.inputError : {}),
+                    ...(customerData?.exists && firstName
+                      ? styles.inputReadOnly
+                      : {}),
+                  }}
+                />
+                {errors.firstName && (
+                  <p style={styles.error}>{errors.firstName}</p>
+                )}
+              </div>
+
+              {/* Email */}
+              <div style={styles.field}>
+                <label htmlFor="reg-email" style={styles.label}>
+                  Email Address <span style={styles.required}>*</span>
+                </label>
+                <input
+                  id="reg-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  readOnly={customerData?.exists && !!email}
+                  style={{
+                    ...styles.input,
+                    ...(errors.email ? styles.inputError : {}),
+                    ...(customerData?.exists && email
+                      ? styles.inputReadOnly
+                      : {}),
+                  }}
+                />
+                {errors.email && <p style={styles.error}>{errors.email}</p>}
+              </div>
+
+              {/* City */}
+              <div style={styles.field}>
+                <label htmlFor="reg-city" style={styles.label}>
+                  City <span style={styles.required}>*</span>
+                </label>
+                <select
+                  id="reg-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  style={{
+                    ...styles.input,
+                    ...styles.select,
+                    ...(errors.city ? styles.inputError : {}),
+                  }}
+                >
+                  <option value="">Select your city</option>
+                  {IRAQI_CITIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                {errors.city && <p style={styles.error}>{errors.city}</p>}
+              </div>
+
+              {/* Store */}
+              <div style={styles.field}>
+                <label htmlFor="reg-store" style={styles.label}>
+                  Store <span style={styles.required}>*</span>
+                </label>
+                <input
+                  id="reg-store"
+                  type="text"
+                  value={storeName}
+                  onChange={(e) => setStoreName(e.target.value)}
+                  placeholder="Store where you purchased"
+                  style={{
+                    ...styles.input,
+                    ...(errors.store ? styles.inputError : {}),
+                  }}
+                />
+                {errors.store && <p style={styles.error}>{errors.store}</p>}
+              </div>
+
+              {/* Purchase Date */}
+              <div style={styles.field}>
+                <label htmlFor="reg-purchaseDate" style={styles.label}>
+                  Purchase Date <span style={styles.required}>*</span>
+                </label>
+                <input
+                  id="reg-purchaseDate"
+                  type="date"
+                  value={purchaseDate}
+                  onChange={(e) => setPurchaseDate(e.target.value)}
+                  max={new Date().toISOString().split("T")[0]}
+                  style={{
+                    ...styles.input,
+                    ...(errors.purchaseDate ? styles.inputError : {}),
+                  }}
+                />
+                {errors.purchaseDate && (
+                  <p style={styles.error}>{errors.purchaseDate}</p>
+                )}
+              </div>
+
+              {/* Invoice Number (optional) */}
+              <div style={styles.field}>
+                <label htmlFor="reg-invoice" style={styles.label}>
+                  Invoice Number
+                </label>
+                <input
+                  id="reg-invoice"
+                  type="text"
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder="Optional"
+                  style={styles.input}
+                />
+              </div>
+            </div>
+
+            <div style={styles.buttonRow}>
+              <button
+                style={styles.buttonSecondary}
+                onClick={() => setCurrentStep("phone")}
+              >
+                ← Back
+              </button>
+              <button
+                style={styles.button}
+                onClick={() => {
+                  if (validateDetails()) setCurrentStep("products");
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- STEP: Products ---- */}
+        {currentStep === "products" && (
+          <div style={styles.stepContent}>
+            <h2 style={styles.stepTitle}>Add your products</h2>
+            <p style={styles.stepDesc}>
+              Search from our catalog or add a product manually.
+            </p>
+
+            {/* Product Search */}
+            <div style={styles.field}>
+              <label htmlFor="product-search" style={styles.label}>
+                Search Products
+              </label>
+              <input
+                id="product-search"
+                type="text"
+                value={productSearch}
+                onChange={(e) => handleProductSearch(e.target.value)}
+                placeholder="Type to search (e.g. Air Fryer)"
+                style={styles.input}
+              />
+              {isSearching && (
+                <p style={styles.searchingText}>Searching...</p>
+              )}
+              {searchResults.length > 0 && (
+                <div style={styles.searchDropdown}>
+                  {searchResults.map((p) => (
+                    <button
+                      key={p.id}
+                      style={styles.searchItem}
+                      onClick={() => addProduct(p)}
+                    >
+                      <span style={styles.searchItemTitle}>{p.title}</span>
+                      {p.sku && (
+                        <span style={styles.searchItemSku}>
+                          SKU: {p.sku}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Entry Toggle */}
+            <button
+              style={styles.linkButton}
+              onClick={() => setShowManualEntry(!showManualEntry)}
+            >
+              {showManualEntry
+                ? "Cancel manual entry"
+                : "Can't find your product? Enter manually"}
+            </button>
+
+            {showManualEntry && (
+              <div style={styles.manualEntryRow}>
+                <input
+                  id="manual-product-title"
+                  type="text"
+                  value={manualTitle}
+                  onChange={(e) => setManualTitle(e.target.value)}
+                  placeholder="Product name (e.g. Geepas Air Fryer 5L)"
+                  style={{ ...styles.input, flex: 1 }}
+                />
+                <button
+                  style={styles.addButton}
+                  onClick={addManualProduct}
+                  disabled={!manualTitle.trim()}
+                >
+                  + Add
+                </button>
+              </div>
+            )}
+
+            {/* Product List */}
+            {products.length > 0 && (
+              <div style={styles.productList}>
+                <h3 style={styles.productListTitle}>
+                  Selected Products ({products.length})
+                </h3>
+                {products.map((p) => (
+                  <div key={p.id} style={styles.productItem}>
+                    <div style={styles.productInfo}>
+                      <span style={styles.productName}>{p.productTitle}</span>
+                      <span style={styles.productMeta}>
+                        {p.isManual ? "Manual entry" : "Catalog product"}
+                        {p.sku ? ` · SKU: ${p.sku}` : ""}
+                      </span>
+                    </div>
+                    <button
+                      style={styles.removeButton}
+                      onClick={() => removeProduct(p.id)}
+                      aria-label="Remove product"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {errors.products && (
+              <p style={styles.error}>{errors.products}</p>
+            )}
+
+            <div style={styles.buttonRow}>
+              <button
+                style={styles.buttonSecondary}
+                onClick={() => setCurrentStep("details")}
+              >
+                ← Back
+              </button>
+              <button
+                style={styles.button}
+                onClick={() => {
+                  if (validateProducts()) setCurrentStep("review");
+                }}
+              >
+                Review Registration
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- STEP: Review ---- */}
+        {currentStep === "review" && (
+          <div style={styles.stepContent}>
+            <h2 style={styles.stepTitle}>Review your registration</h2>
+            <p style={styles.stepDesc}>
+              Please verify the information below before submitting.
+            </p>
+
+            <div style={styles.reviewSection}>
+              <h3 style={styles.reviewLabel}>Customer</h3>
+              <div style={styles.reviewGrid}>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Name</span>
+                  <span style={styles.reviewFieldValue}>{firstName}</span>
+                </div>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Email</span>
+                  <span style={styles.reviewFieldValue}>{email}</span>
+                </div>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Phone</span>
+                  <span style={styles.reviewFieldValue}>{phone}</span>
+                </div>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Type</span>
+                  <span style={styles.reviewFieldValue}>
+                    {isNewCustomer ? "New Customer" : "Returning Customer"}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div style={styles.reviewDivider} />
+
+            <div style={styles.reviewSection}>
+              <h3 style={styles.reviewLabel}>Purchase Details</h3>
+              <div style={styles.reviewGrid}>
+                <div>
+                  <span style={styles.reviewFieldLabel}>City</span>
+                  <span style={styles.reviewFieldValue}>{city}</span>
+                </div>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Store</span>
+                  <span style={styles.reviewFieldValue}>{storeName}</span>
+                </div>
+                <div>
+                  <span style={styles.reviewFieldLabel}>Purchase Date</span>
+                  <span style={styles.reviewFieldValue}>
+                    {new Date(purchaseDate).toLocaleDateString()}
+                  </span>
+                </div>
+                {invoiceNumber && (
+                  <div>
+                    <span style={styles.reviewFieldLabel}>Invoice #</span>
+                    <span style={styles.reviewFieldValue}>
+                      {invoiceNumber}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={styles.reviewDivider} />
+
+            <div style={styles.reviewSection}>
+              <h3 style={styles.reviewLabel}>
+                Products ({products.length})
+              </h3>
+              {products.map((p) => (
+                <div key={p.id} style={styles.reviewProductItem}>
+                  <span>{p.productTitle}</span>
+                  <span style={styles.reviewProductMeta}>
+                    {p.isManual ? "Manual" : "Catalog"}
+                    {p.sku ? ` · ${p.sku}` : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div style={styles.buttonRow}>
+              <button
+                style={styles.buttonSecondary}
+                onClick={() => setCurrentStep("products")}
+              >
+                ← Back
+              </button>
+              <button
+                style={{
+                  ...styles.button,
+                  ...styles.buttonSubmit,
+                  ...(isSubmitting ? styles.buttonDisabled : {}),
+                }}
+                disabled={isSubmitting}
+                onClick={handleSubmit}
+              >
+                {isSubmitting ? "Submitting..." : "Submit Registration"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ---- STEP: Success ---- */}
+        {currentStep === "success" && (
+          <div style={styles.stepContent}>
+            <div style={styles.successIcon}>✓</div>
+            <h1 style={styles.successTitle}>Registration Complete!</h1>
+            <p style={styles.successMessage}>
+              Your warranty has been successfully registered.
+              {successData?.smsSent
+                ? " A confirmation SMS has been sent to your phone."
+                : " You will receive a confirmation shortly."}
+            </p>
+            {successData?.reward?.discountCode && (
+              <div style={styles.rewardBanner}>
+                <span style={styles.rewardEmoji}>🎁</span>
+                <div>
+                  <p style={styles.rewardTitle}>
+                    You earned a 15% discount!
+                  </p>
+                  <p style={styles.rewardCode}>
+                    {successData.reward.discountCode}
+                  </p>
+                  <p style={styles.rewardDesc}>
+                    Use this code on your next Geepas purchase.
+                  </p>
+                </div>
+              </div>
+            )}
+            {successData?.reward?.message && (
+              <div style={styles.infoBanner}>
+                <span style={styles.bannerIcon}>ℹ</span>
+                {successData.reward.message}
+              </div>
+            )}
+            <button style={styles.button} onClick={handleReset}>
+              Register Another Product
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Inline styles ----------
+const styles: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+    padding: "24px",
+    fontFamily:
+      "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+  },
+  card: {
+    width: "100%",
+    maxWidth: "600px",
+    background: "#ffffff",
+    borderRadius: "16px",
+    padding: "40px",
+    boxShadow:
+      "0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.03)",
+  },
+  header: {
+    marginBottom: "24px",
+    textAlign: "center" as const,
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: 700,
+    color: "#0f172a",
+    margin: "0 0 8px 0",
+  },
+  subtitle: {
+    fontSize: "15px",
+    color: "#64748b",
+    margin: 0,
+  },
+  // Progress
+  progressContainer: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "32px",
+    gap: "0px",
+  },
+  progressStep: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  progressDot: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    background: "#e2e8f0",
+    color: "#94a3b8",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "13px",
+    fontWeight: 600,
+    transition: "all 0.3s ease",
+    flexShrink: 0,
+  },
+  progressDotActive: {
+    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+    color: "#ffffff",
+  },
+  progressLabel: {
+    fontSize: "12px",
+    color: "#94a3b8",
+    fontWeight: 500,
+    whiteSpace: "nowrap" as const,
+  },
+  progressLabelActive: {
+    color: "#2563eb",
+    fontWeight: 600,
+  },
+  progressLine: {
+    width: "40px",
+    height: "2px",
+    background: "#e2e8f0",
+    margin: "0 4px",
+    transition: "background 0.3s ease",
+  },
+  progressLineActive: {
+    background: "#3b82f6",
+  },
+  // Steps
+  stepContent: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "20px",
+  },
+  stepTitle: {
+    fontSize: "20px",
+    fontWeight: 700,
+    color: "#0f172a",
+    margin: 0,
+  },
+  stepDesc: {
+    fontSize: "14px",
+    color: "#64748b",
+    margin: 0,
+  },
+  // Form elements
+  form: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "18px",
+  },
+  field: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "6px",
+  },
+  label: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#334155",
+  },
+  required: {
+    color: "#ef4444",
+  },
+  input: {
+    padding: "12px 14px",
+    fontSize: "15px",
+    border: "1.5px solid #e2e8f0",
+    borderRadius: "10px",
+    outline: "none",
+    transition: "border-color 0.2s, box-shadow 0.2s",
+    color: "#0f172a",
+    background: "#f8fafc",
+  },
+  inputReadOnly: {
+    background: "#f1f5f9",
+    color: "#64748b",
+    cursor: "default",
+  },
+  select: {
+    appearance: "none" as const,
+    cursor: "pointer",
+    backgroundImage:
+      'url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e")',
+    backgroundPosition: "right 12px center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "16px",
+    paddingRight: "36px",
+  },
+  inputError: {
+    borderColor: "#ef4444",
+    boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.1)",
+  },
+  error: {
+    fontSize: "13px",
+    color: "#ef4444",
+    margin: 0,
+  },
+  globalError: {
+    padding: "12px 16px",
+    background: "#fef2f2",
+    border: "1px solid #fecaca",
+    borderRadius: "10px",
+    color: "#dc2626",
+    fontSize: "14px",
+    marginBottom: "8px",
+  },
+  // Banners
+  successBanner: {
+    padding: "14px 16px",
+    background: "#f0fdf4",
+    border: "1px solid #bbf7d0",
+    borderRadius: "10px",
+    color: "#166534",
+    fontSize: "14px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontWeight: 500,
+  },
+  infoBanner: {
+    padding: "14px 16px",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "10px",
+    color: "#1e40af",
+    fontSize: "14px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontWeight: 500,
+  },
+  bannerIcon: {
+    fontSize: "18px",
+    flexShrink: 0,
+  },
+  // Buttons
+  button: {
+    padding: "14px",
+    fontSize: "16px",
+    fontWeight: 600,
+    color: "#ffffff",
+    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+    border: "none",
+    borderRadius: "12px",
+    cursor: "pointer",
+    transition: "opacity 0.2s, transform 0.1s",
+  },
+  buttonSecondary: {
+    padding: "14px 20px",
+    fontSize: "15px",
+    fontWeight: 500,
+    color: "#64748b",
+    background: "#f1f5f9",
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
+  buttonSubmit: {
+    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed",
+  },
+  buttonRow: {
+    display: "flex",
+    gap: "12px",
+    justifyContent: "space-between",
+    marginTop: "8px",
+  },
+  linkButton: {
+    background: "none",
+    border: "none",
+    color: "#3b82f6",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: 500,
+    padding: "4px 0",
+    textAlign: "left" as const,
+    textDecoration: "underline",
+  },
+  addButton: {
+    padding: "12px 20px",
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#ffffff",
+    background: "#3b82f6",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    whiteSpace: "nowrap" as const,
+  },
+  // Product search
+  searchingText: {
+    fontSize: "13px",
+    color: "#94a3b8",
+    margin: 0,
+  },
+  searchDropdown: {
+    border: "1px solid #e2e8f0",
+    borderRadius: "10px",
+    maxHeight: "200px",
+    overflowY: "auto" as const,
+    background: "#ffffff",
+    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
+  },
+  searchItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "12px 14px",
+    border: "none",
+    borderBottom: "1px solid #f1f5f9",
+    background: "transparent",
+    cursor: "pointer",
+    width: "100%",
+    textAlign: "left" as const,
+    transition: "background 0.15s",
+    fontSize: "14px",
+    color: "#0f172a",
+  },
+  searchItemTitle: {
+    fontWeight: 500,
+  },
+  searchItemSku: {
+    fontSize: "12px",
+    color: "#94a3b8",
+  },
+  manualEntryRow: {
+    display: "flex",
+    gap: "10px",
+    alignItems: "center",
+  },
+  // Product list
+  productList: {
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+    padding: "16px",
+    background: "#fafbfc",
+  },
+  productListTitle: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#334155",
+    margin: "0 0 12px 0",
+  },
+  productItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 12px",
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "8px",
+    marginBottom: "8px",
+  },
+  productInfo: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "2px",
+  },
+  productName: {
+    fontSize: "14px",
+    fontWeight: 500,
+    color: "#0f172a",
+  },
+  productMeta: {
+    fontSize: "12px",
+    color: "#94a3b8",
+  },
+  removeButton: {
+    background: "none",
+    border: "none",
+    color: "#ef4444",
+    cursor: "pointer",
+    fontSize: "16px",
+    padding: "4px 8px",
+    borderRadius: "6px",
+    transition: "background 0.15s",
+  },
+  // Review
+  reviewSection: {
+    marginBottom: "4px",
+  },
+  reviewLabel: {
+    fontSize: "14px",
+    fontWeight: 600,
+    color: "#3b82f6",
+    margin: "0 0 10px 0",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.5px",
+  },
+  reviewGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "12px",
+  },
+  reviewFieldLabel: {
+    display: "block",
+    fontSize: "12px",
+    color: "#94a3b8",
+    fontWeight: 500,
+    marginBottom: "2px",
+  },
+  reviewFieldValue: {
+    display: "block",
+    fontSize: "14px",
+    color: "#0f172a",
+    fontWeight: 500,
+  },
+  reviewDivider: {
+    height: "1px",
+    background: "#e2e8f0",
+    margin: "4px 0",
+  },
+  reviewProductItem: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 12px",
+    background: "#f8fafc",
+    borderRadius: "8px",
+    marginBottom: "6px",
+    fontSize: "14px",
+    color: "#0f172a",
+  },
+  reviewProductMeta: {
+    fontSize: "12px",
+    color: "#94a3b8",
+  },
+  // Success
+  successIcon: {
+    width: "64px",
+    height: "64px",
+    borderRadius: "50%",
+    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+    color: "#fff",
+    fontSize: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 20px",
+  },
+  successTitle: {
+    fontSize: "24px",
+    fontWeight: 700,
+    color: "#0f172a",
+    textAlign: "center" as const,
+    margin: "0 0 12px 0",
+  },
+  successMessage: {
+    fontSize: "15px",
+    color: "#64748b",
+    textAlign: "center" as const,
+    margin: "0 0 24px 0",
+    lineHeight: 1.6,
+  },
+  // Reward banner
+  rewardBanner: {
+    padding: "20px",
+    background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
+    border: "1px solid #fbbf24",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    marginBottom: "8px",
+  },
+  rewardEmoji: {
+    fontSize: "36px",
+    flexShrink: 0,
+  },
+  rewardTitle: {
+    fontSize: "16px",
+    fontWeight: 700,
+    color: "#92400e",
+    margin: "0 0 4px 0",
+  },
+  rewardCode: {
+    fontSize: "22px",
+    fontWeight: 800,
+    color: "#78350f",
+    margin: "0 0 4px 0",
+    letterSpacing: "2px",
+    fontFamily: "monospace",
+  },
+  rewardDesc: {
+    fontSize: "13px",
+    color: "#92400e",
+    margin: 0,
+  },
+};
+</file>
+
+<file path="app/routes/webhooks.app.scopes_update.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+    const { payload, session, topic, shop } = await authenticate.webhook(request);
+    console.log(`Received ${topic} webhook for ${shop}`);
+
+    const current = payload.current as string[];
+    if (session) {
+        await db.session.update({   
+            where: {
+                id: session.id
+            },
+            data: {
+                scope: current.toString(),
+            },
+        });
+    }
+    return new Response();
+};
+</file>
+
+<file path="app/routes/webhooks.app.uninstalled.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, session, topic } = await authenticate.webhook(request);
+
+  console.log(`Received ${topic} webhook for ${shop}`);
+
+  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
+  // If this webhook already ran, the session may have been deleted previously.
+  if (session) {
+    await db.session.deleteMany({ where: { shop } });
+  }
+
+  return new Response();
+};
+</file>
+
+<file path="app/utils/twilio.server.ts">
+/**
+ * Twilio SMS Service
+ * Uses native fetch to send SMS via Twilio's REST API.
+ * No external dependencies required.
+ */
+
+const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID || "";
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN || "";
+const TWILIO_SENDER_NUMBER = process.env.TWILIO_SENDER_NUMBER || "";
+
+/**
+ * Normalize a phone number to E.164 format.
+ * Defaults to Iraqi format (+964...) if no country code is present (e.g. starts with 07... or 7...).
+ * If it starts with + or 00, it is treated as an international number.
+ */
+export function normalizePhone(raw: string): string {
+  // Trim and strip spaces, dashes, parentheses
+  let cleaned = raw.trim().replace(/[\s\-\(\)]/g, "");
+
+  // Check if it already starts with +
+  if (cleaned.startsWith("+")) {
+    const digits = cleaned.slice(1).replace(/\D/g, "");
+    return "+" + digits;
+  }
+
+  // Check if it starts with 00 (international prefix)
+  if (cleaned.startsWith("00")) {
+    const digits = cleaned.slice(2).replace(/\D/g, "");
+    return "+" + digits;
+  }
+
+  // Clean all non-digits for the local/national formats
+  let digits = cleaned.replace(/\D/g, "");
+
+  // If starts with 0 (local format: e.g. 07xx for Iraq), replace leading 0 with 964
+  if (digits.startsWith("0")) {
+    digits = "964" + digits.slice(1);
+  }
+
+  // If it starts with 7 (e.g. 77... 10 digits) and does not start with 964, assume Iraqi and prepend 964
+  if (digits.length === 10 && digits.startsWith("7")) {
+    digits = "964" + digits;
+  }
+
+  // If it doesn't start with 964 and is length <= 10, assume Iraqi and prepend 964
+  if (!digits.startsWith("964") && digits.length <= 10) {
+    digits = "964" + digits;
+  }
+
+  return "+" + digits;
+}
+
+// Keep alias for backwards compatibility/existing code references
+export const normalizeIraqiPhone = normalizePhone;
+
+export interface SendSmsResult {
+  success: boolean;
+  sid?: string;
+  error?: string;
+  rawResponse?: string;
+}
+
+/**
+ * Send an SMS message via Twilio REST API.
+ */
+export async function sendSms(
+  to: string,
+  body: string
+): Promise<SendSmsResult> {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_SENDER_NUMBER) {
+    console.warn("[Twilio] Missing credentials, SMS not sent.");
+    return {
+      success: false,
+      error: "Twilio credentials not configured.",
+    };
+  }
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+
+  const params = new URLSearchParams();
+  params.set("To", to);
+  params.set("From", TWILIO_SENDER_NUMBER);
+  params.set("Body", body);
+
+  const authHeader =
+    "Basic " +
+    Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString(
+      "base64"
+    );
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: params.toString(),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      console.log(`[Twilio] SMS sent to ${to}, SID: ${data.sid}`);
+      return {
+        success: true,
+        sid: data.sid,
+        rawResponse: JSON.stringify(data),
+      };
+    } else {
+      console.error(`[Twilio] SMS failed:`, data);
+      return {
+        success: false,
+        error: data.message || "Twilio API error",
+        rawResponse: JSON.stringify(data),
+      };
+    }
+  } catch (err: any) {
+    console.error(`[Twilio] Network error:`, err);
+    return {
+      success: false,
+      error: err.message || "Network error sending SMS",
+    };
+  }
+}
+
+/**
+ * Build warranty confirmation SMS body.
+ */
+export function buildWarrantyConfirmationSms(
+  firstName: string,
+  discountCode: string | null,
+  websiteUrl: string
+): string {
+  if (discountCode) {
+    return (
+      `Hi ${firstName}, your Geepas warranty registration is confirmed! ` +
+      `🎁 Use code ${discountCode} for 15% OFF your next purchase at ${websiteUrl}. ` +
+      `Thank you for choosing Geepas!`
+    );
+  }
+  return (
+    `Hi ${firstName}, your Geepas warranty registration is confirmed! ` +
+    `Thank you for choosing Geepas.`
+  );
+}
+</file>
+
+<file path="Dockerfile">
+FROM node:18-alpine
+RUN apk add --no-cache openssl
+
+EXPOSE 3000
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+
+RUN npm ci --omit=dev && npm cache clean --force
+# Remove CLI packages since we don't need them in production by default.
+# Remove this line if you want to run CLI commands in your container.
+RUN npm remove @shopify/cli
+
+COPY . .
+
+RUN npm run build
+
+CMD ["npm", "run", "docker-start"]
+</file>
+
+<file path="env.d.ts">
+/// <reference types="vite/client" />
+/// <reference types="@remix-run/node" />
+</file>
+
+<file path="prisma/migrations/20260618181611_add_warranty_model/migration.sql">
+-- CreateTable
+CREATE TABLE "Warranty" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "productName" TEXT NOT NULL,
+    "productId" TEXT,
+    "serialNumber" TEXT,
+    "purchaseDate" DATETIME NOT NULL,
+    "invoiceUrl" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateIndex
+CREATE INDEX "Warranty_shop_idx" ON "Warranty"("shop");
+
+-- CreateIndex
+CREATE INDEX "Warranty_serialNumber_idx" ON "Warranty"("serialNumber");
+</file>
+
+<file path="prisma/migrations/20260619143115_replace_invoice_url_with_invoice_number/migration.sql">
+/*
+  Warnings:
+
+  - You are about to drop the column `invoiceUrl` on the `Warranty` table. All the data in the column will be lost.
+
+*/
+-- RedefineTables
+PRAGMA defer_foreign_keys=ON;
+PRAGMA foreign_keys=OFF;
+CREATE TABLE "new_Warranty" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "productName" TEXT NOT NULL,
+    "productId" TEXT,
+    "serialNumber" TEXT,
+    "purchaseDate" DATETIME NOT NULL,
+    "invoiceNumber" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+INSERT INTO "new_Warranty" ("createdAt", "email", "id", "name", "phone", "productId", "productName", "purchaseDate", "serialNumber", "shop", "status", "updatedAt") SELECT "createdAt", "email", "id", "name", "phone", "productId", "productName", "purchaseDate", "serialNumber", "shop", "status", "updatedAt" FROM "Warranty";
+DROP TABLE "Warranty";
+ALTER TABLE "new_Warranty" RENAME TO "Warranty";
+CREATE INDEX "Warranty_shop_idx" ON "Warranty"("shop");
+CREATE INDEX "Warranty_serialNumber_idx" ON "Warranty"("serialNumber");
+PRAGMA foreign_keys=ON;
+PRAGMA defer_foreign_keys=OFF;
+</file>
+
+<file path="prisma/migrations/20260619155920_phase7_relational_schema/migration.sql">
+/*
+  Warnings:
+
+  - You are about to drop the `Warranty` table. If the table is not empty, all the data it contains will be lost.
+
+*/
+-- DropTable
+PRAGMA foreign_keys=off;
+DROP TABLE "Warranty";
+PRAGMA foreign_keys=on;
+
+-- CreateTable
+CREATE TABLE "WarrantyRegistration" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "firstName" TEXT NOT NULL,
+    "email" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "city" TEXT NOT NULL,
+    "store" TEXT NOT NULL,
+    "purchaseDate" DATETIME NOT NULL,
+    "invoiceNumber" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL
+);
+
+-- CreateTable
+CREATE TABLE "WarrantyProduct" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "registrationId" TEXT NOT NULL,
+    "productId" TEXT,
+    "productTitle" TEXT NOT NULL,
+    "sku" TEXT,
+    "isManual" BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT "WarrantyProduct_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+-- CreateTable
+CREATE TABLE "CustomerReward" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "customerId" TEXT NOT NULL,
+    "rewardType" TEXT NOT NULL,
+    "discountCode" TEXT NOT NULL,
+    "issuedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sentAt" DATETIME
+);
+
+-- CreateTable
+CREATE TABLE "SMSLog" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "phone" TEXT NOT NULL,
+    "registrationId" TEXT,
+    "rewardId" TEXT,
+    "smsSent" BOOLEAN NOT NULL DEFAULT false,
+    "smsSentAt" DATETIME,
+    "smsProviderResponse" TEXT,
+    CONSTRAINT "SMSLog_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "SMSLog_rewardId_fkey" FOREIGN KEY ("rewardId") REFERENCES "CustomerReward" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+);
+
+-- CreateIndex
+CREATE INDEX "WarrantyRegistration_shop_idx" ON "WarrantyRegistration"("shop");
+
+-- CreateIndex
+CREATE INDEX "WarrantyRegistration_phone_idx" ON "WarrantyRegistration"("phone");
+
+-- CreateIndex
+CREATE INDEX "WarrantyProduct_registrationId_idx" ON "WarrantyProduct"("registrationId");
+
+-- CreateIndex
+CREATE INDEX "CustomerReward_shop_idx" ON "CustomerReward"("shop");
+
+-- CreateIndex
+CREATE INDEX "CustomerReward_phone_idx" ON "CustomerReward"("phone");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CustomerReward_shop_phone_rewardType_key" ON "CustomerReward"("shop", "phone", "rewardType");
+
+-- CreateIndex
+CREATE INDEX "SMSLog_registrationId_idx" ON "SMSLog"("registrationId");
+
+-- CreateIndex
+CREATE INDEX "SMSLog_rewardId_idx" ON "SMSLog"("rewardId");
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "sqlite"
+</file>
+
+<file path="tsconfig.json">
+{
+  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "removeComments": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "baseUrl": ".",
+    "types": ["node"]
+  }
+}
+</file>
+
+<file path="verify-db.ts">
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.log("Checking DB tables...");
+  try {
+    const regCount = await prisma.warrantyRegistration.count();
+    console.log("WarrantyRegistration exists, count:", regCount);
+  } catch (err: any) {
+    console.error("WarrantyRegistration check failed:", err.message);
+  }
+
+  try {
+    const prodCount = await prisma.warrantyProduct.count();
+    console.log("WarrantyProduct exists, count:", prodCount);
+  } catch (err: any) {
+    console.error("WarrantyProduct check failed:", err.message);
+  }
+
+  try {
+    const rewardCount = await prisma.customerReward.count();
+    console.log("CustomerReward exists, count:", rewardCount);
+  } catch (err: any) {
+    console.error("CustomerReward check failed:", err.message);
+  }
+
+  try {
+    const smsCount = await prisma.sMSLog.count();
+    console.log("SMSLog exists, count:", smsCount);
+  } catch (err: any) {
+    console.error("SMSLog check failed:", err.message);
+  }
+}
+
+main()
+  .catch((e) => console.error(e))
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+</file>
+
+<file path="verify-scopes.ts">
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.log("Fetching active Shopify sessions from DB...");
+  const sessions = await prisma.session.findMany();
+  console.log(`Found ${sessions.length} sessions.`);
+
+  for (const session of sessions) {
+    console.log(`\nShop: ${session.shop}`);
+    console.log(`Scope from DB session: ${session.scope}`);
+    console.log(`Is Online: ${session.isOnline}`);
+    console.log(`Expires: ${session.expires}`);
+
+    if (session.accessToken) {
+      console.log("Querying Shopify Admin API for current installation scopes...");
+      try {
+        // Query current app installation scopes via GraphQL API
+        const url = `https://${session.shop}/admin/api/2024-04/graphql.json`;
+        const query = {
+          query: `{
+            currentAppInstallation {
+              accessScopes {
+                handle
+                description
+              }
+            }
+          }`
+        };
+
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Shopify-Access-Token": session.accessToken,
+          },
+          body: JSON.stringify(query),
+        });
+
+        if (!res.ok) {
+          console.error(`HTTP error fetching scopes: ${res.status} ${res.statusText}`);
+          const text = await res.text();
+          console.error("Response body:", text);
+          continue;
+        }
+
+        const data: any = await res.json();
+        if (data.errors) {
+          console.error("GraphQL errors:", data.errors);
+        } else {
+          const scopes = data?.data?.currentAppInstallation?.accessScopes || [];
+          console.log("Shopify Active Access Scopes:");
+          scopes.forEach((s: any) => {
+            console.log(`  - ${s.handle} (${s.description})`);
+          });
+        }
+      } catch (err: any) {
+        console.error("Failed to query Shopify API:", err.message);
+      }
+    }
+  }
+}
+
+main()
+  .catch((e) => console.error(e))
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
+</file>
+
+<file path=".github/workflows/remove-labels-on-activity.yml">
+name: Remove Waiting Labels
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+jobs:
+  remove-labels-on-activity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
+      - uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1.2.0
+        if: contains(github.event.issue.labels.*.name, 'Waiting for Response')
+        with:
+          labels: |
+            Waiting for Response
+</file>
+
+<file path=".gitignore">
+node_modules
+.DS_Store
+
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+
+.env
+.env.*
+
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+/extensions/*/dist
+
+# Ignore shopify files created during app dev
+.shopify/*
+.shopify.lock
+</file>
+
+<file path=".graphqlrc.ts">
+import fs from "fs";
+import { ApiVersion } from "@shopify/shopify-api";
+import { shopifyApiProject, ApiType } from "@shopify/api-codegen-preset";
+import type { IGraphQLConfig } from "graphql-config";
+
+function getConfig() {
+  const config: IGraphQLConfig = {
+    projects: {
+      default: shopifyApiProject({
+        apiType: ApiType.Admin,
+        apiVersion: ApiVersion.July25,
+        documents: [
+          "./app/**/*.{js,ts,jsx,tsx}",
+          "./app/.server/**/*.{js,ts,jsx,tsx}",
+        ],
+        outputDir: "./app/types",
+      }),
+    },
+  };
+
+  let extensions: string[] = [];
+  try {
+    extensions = fs.readdirSync("./extensions");
+  } catch {
+    // ignore if no extensions
+  }
+
+  for (const entry of extensions) {
+    const extensionPath = `./extensions/${entry}`;
+    const schema = `${extensionPath}/schema.graphql`;
+    if (!fs.existsSync(schema)) {
+      continue;
+    }
+    config.projects[entry] = {
+      schema,
+      documents: [`${extensionPath}/**/*.graphql`],
+    };
+  }
+
+  return config;
+}
+
+const config = getConfig();
+
+export default config;
+</file>
+
+<file path=".npmrc">
+engine-strict=true
+@shopify:registry=https://registry.npmjs.org
+</file>
+
+<file path="app/db.server.ts">
+import { PrismaClient } from "@prisma/client";
+
+declare global {
+  var prismaGlobal: PrismaClient;
+}
+
+if (process.env.NODE_ENV !== "production") {
+  if (!global.prismaGlobal) {
+    global.prismaGlobal = new PrismaClient();
+  }
+}
+
+const prisma = global.prismaGlobal ?? new PrismaClient();
+
+export default prisma;
+</file>
+
+<file path="pnpm-workspace.yaml">
+packages:
+  - 'extensions/*'
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  unrs-resolver: true
+</file>
+
+<file path="prisma/migrations/20240530213853_create_session_table/migration.sql">
+-- CreateTable
+CREATE TABLE "Session" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "shop" TEXT NOT NULL,
+    "state" TEXT NOT NULL,
+    "isOnline" BOOLEAN NOT NULL DEFAULT false,
+    "scope" TEXT,
+    "expires" DATETIME,
+    "accessToken" TEXT NOT NULL,
+    "userId" BIGINT,
+    "firstName" TEXT,
+    "lastName" TEXT,
+    "email" TEXT,
+    "accountOwner" BOOLEAN NOT NULL DEFAULT false,
+    "locale" TEXT,
+    "collaborator" BOOLEAN DEFAULT false,
+    "emailVerified" BOOLEAN DEFAULT false,
+    "refreshToken" TEXT,
+    "refreshTokenExpires" DATETIME
+);
+</file>
+
+<file path="prisma/schema.prisma">
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model WarrantyRegistration {
+  id            String            @id @default(uuid())
+  shop          String
+  customerId    String            // Shopify customer GID: "gid://shopify/Customer/xxxx"
+  firstName     String
+  email         String
+  phone         String            // Mobile number (entered by customer)
+  city          String            // Iraqi city from dropdown
+  store         String            // Selected retail store/outlet
+  purchaseDate  DateTime
+  invoiceNumber String?           // Optional invoice number
+  status        String            @default("pending") // pending, approved, rejected
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  products      WarrantyProduct[]
+  smsLogs       SMSLog[]
+
+  @@index([shop])
+  @@index([phone])
+}
+
+model WarrantyProduct {
+  id             String               @id @default(uuid())
+  registrationId String
+  productId      String?              // Shopify Product GID (null if manual entry)
+  productTitle   String
+  sku            String?
+  isManual       Boolean              @default(false) // true if manually entered (not from catalog)
+
+  registration   WarrantyRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([registrationId])
+}
+
+model CustomerReward {
+  id           String    @id @default(uuid())
+  shop         String
+  phone        String    // Normalized mobile number
+  customerId   String    // Shopify customer GID
+  rewardType   String    // "WELCOME_10" or "WARRANTY_15"
+  discountCode String    // Shopify discount code generated
+  issuedAt     DateTime  @default(now())
+  sentAt       DateTime?
+
+  smsLogs      SMSLog[]
+
+  @@unique([shop, phone, rewardType])
+  @@index([shop])
+  @@index([phone])
+}
+
+model SMSLog {
+  id                  String                @id @default(uuid())
+  shop                String
+  phone               String
+  registrationId      String?
+  rewardId            String?
+  smsSent             Boolean               @default(false)
+  smsSentAt           DateTime?
+  smsProviderResponse String?               // API response or error log details
+
+  registration        WarrantyRegistration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  reward              CustomerReward?       @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+
+  @@index([registrationId])
+  @@index([rewardId])
+}
+</file>
+
+<file path="shopify.app.toml">
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "41d1d7fae24939000bdbd2935ae8857f"
+name = "Warranty Registration"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
+</file>
+
+<file path="shopify.web.toml">
+name = "remix"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+[commands]
+predev = "pnpm exec prisma generate"
+dev = "pnpm exec prisma migrate deploy && pnpm exec remix vite:dev"
+</file>
+
+<file path="shopify.web.toml.liquid">
+name = "remix"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+{%- assign exec = dependency_manager | append: ' exec' -%}
+{%- if dependency_manager == 'yarn' -%}
+{%- assign exec = 'yarn' -%}
+{%- endif %}
+[commands]
+predev = "{{ exec }} prisma generate"
+dev = "{{ exec }} prisma migrate deploy && {{ exec }} remix vite:dev"
+</file>
+
+<file path=".github/CODEOWNERS">
+* @shop/dev_experience
+</file>
+
+<file path=".github/workflows/close-waiting-for-response-issues.yml">
+name: Close Waiting for Response Issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+jobs:
+  check-need-info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: close-issues
+        uses: actions-cool/issues-helper@45d75b6cf72bf4f254be6230cb887ad002702491 # v3.6.3
+        with:
+          actions: "close-issues"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          labels: "Waiting for Response"
+          inactive-day: 14
+          body: |
+            We are closing this issue because we did not hear back regarding additional details we needed to resolve this issue. If the issue persists and you are able to provide the missing clarification we need, you can respond here or create a new issue.
+
+            We appreciate your understanding as we try to manage our number of open issues.
+</file>
+
+<file path="vite.config.ts">
+import { vitePlugin as remix } from "@remix-run/dev";
+import { installGlobals } from "@remix-run/node";
+import { defineConfig, type UserConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+installGlobals({ nativeFetch: true });
+
+// Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
+// Replace the HOST env var with SHOPIFY_APP_URL so that it doesn't break the remix server. The CLI will eventually
+// stop passing in HOST, so we can remove this workaround after the next major release.
+if (
+  process.env.HOST &&
+  (!process.env.SHOPIFY_APP_URL ||
+    process.env.SHOPIFY_APP_URL === process.env.HOST)
+) {
+  process.env.SHOPIFY_APP_URL = process.env.HOST;
+  delete process.env.HOST;
+}
+
+const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
+  .hostname;
+
+let hmrConfig;
+if (host === "localhost") {
+  hmrConfig = {
+    protocol: "ws",
+    host: "localhost",
+    port: 64999,
+    clientPort: 64999,
+  };
+} else {
+  hmrConfig = {
+    protocol: "wss",
+    host: host,
+    port: parseInt(process.env.FRONTEND_PORT!) || 8002,
+    clientPort: 443,
+  };
+}
+
+export default defineConfig({
+  server: {
+    allowedHosts: [host],
+    cors: {
+      preflightContinue: true,
+    },
+    port: Number(process.env.PORT || 3000),
+    hmr: hmrConfig,
+    fs: {
+      // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
+      allow: ["app", "node_modules"],
+    },
+  },
+  plugins: [
+    remix({
+      ignoredRouteFiles: ["**/.*"],
+      future: {
+        v3_fetcherPersist: true,
+        v3_relativeSplatPath: true,
+        v3_throwAbortReason: true,
+        v3_lazyRouteDiscovery: true,
+        v3_singleFetch: false,
+        v3_routeConfig: true,
+      },
+    }),
+    tsconfigPaths(),
+  ],
+  build: {
+    assetsInlineLimit: 0,
+  },
+  optimizeDeps: {
+    include: ["@shopify/app-bridge-react", "@shopify/polaris"],
+  },
+}) satisfies UserConfig;
+</file>
+
+<file path=".github/dependabot.yml">
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+  # Enable version updates for npm
+  - package-ecosystem: 'npm'
+    # Look for `package.json` and `lock` files in the `root` directory
+    directory: '/'
+    # Check the npm registry for updates every day (weekdays)
+    schedule:
+      interval: 'weekly'
+    # Dependabot defaults to 5 open pull requests at a time
+    open-pull-requests-limit: 100
+
+    # Cooldown is the number of days after a release to wait until opening a PR
+    # This gives us more confidence changes can be merged because changes have been community tested.
+    # See: https://github.blog/changelog/2025-07-01-dependabot-supports-configuration-of-a-minimum-package-age/
+    cooldown:
+      default-days: 14
+      semver-major-days: 30
+      semver-minor-days: 14
+      semver-patch-days: 14
+
+    groups:
+
+      # Group together PRs of dependant packages
+      prisma:
+        patterns:
+          - 'prisma'
+          - '@prisma/client'
+      react:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react'
+          - '@types/react-dom'
+      vite:
+        patterns:
+          - 'vite'
+          - 'vite-tsconfig-paths'
+      remix:
+        patterns:
+          - '@remix-run/dev'
+          - '@remix-run/fs-routes'
+          - '@remix-run/node'
+          - '@remix-run/react'
+          - '@remix-run/eslint-config'
+          - '@remix-run/route-config'
+
+      # Group all patch updates not accounted for in prior groups in a single PR.
+      # This reduces the number of PRs to review and rebase.
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+</file>
+
+<file path=".github/workflows/ci.yml">
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  CI:
+    name: CI_Node_${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [20.19.0, 22, 24]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: ${{ matrix.version }}
+      - name: Install
+        run: yarn install
+</file>
+
+<file path=".github/workflows/convert-to-js.yml">
+name: Create Javascript conversion PR
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+jobs:
+  convert-ts-files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
+
+      - name: Create lock file
+        run: touch yarn.lock
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 22.12.x
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn add -W --dev @shopify/eslint-plugin --ignore-engines
+
+      - name: Create temporary tsconfig file
+        run: |
+          echo '{
+            "include": ["./app/**/*", "*.ts", "*.tsx", ".graphqlrc.ts"],
+            "compilerOptions": {
+              "strict": true,
+              "removeComments": false,
+              "skipLibCheck": true,
+              "isolatedModules": true,
+              "noEmitOnError": true,
+              "jsx": "preserve",
+              "module": "ES2022",
+              "moduleResolution": "bundler",
+              "target": "ES2022",
+              "paths": {
+                "~/*": ["./app/*"]
+              }
+            }
+          }' > tsconfig.js.json
+
+      - name: Transpile to Javascript
+        run: yarn tsc -p tsconfig.js.json
+
+      - name: Remove Typescript files
+        run: |
+          find app \( -name "*.ts" -o -name "*.tsx" \) -delete
+          find . \( -name ".graphqlrc.ts" -o -name "tsconfig.js.json" -o -name "vite.config.ts" \) -delete
+
+      - name: Run prettier
+        run: yarn prettier -w "app/**/*.{js,jsx}" ".graphqlrc.js" "vite.config.js"
+
+      - name: Run ESLint
+        run: |
+          yarn lint "app/**/*.{js,jsx}" ".graphqlrc.js" "vite.config.js" --fix --no-cache --ignore-pattern "\!.graphqlrc.js" --plugin @shopify/eslint-plugin --rule '{
+            "import/order": "error",
+            "import/newline-after-import": "error",
+            "padding-line-between-statements": ["error",
+              { "blankLine": "always", "prev": ["const", "let", "var"], "next": "*"},
+              { "blankLine": "any",    "prev": ["const", "let", "var"], "next": ["const", "let", "var"]}
+              { "blankLine": "always", "prev": "*", "next": "return" },
+              { "blankLine": "always", "prev": "*", "next": "export" },
+              { "blankLine": "never",  "prev": "export", "next": "export" },
+              { "blankLine": "always", "prev": "*", "next": "block-like" },
+              { "blankLine": "always", "prev": "block-like", "next": "*" }
+            ]}'
+
+      - name: Prepare files for git
+        run: |
+          git config user.name GitHub
+          git config user.email noreply@github.com
+          git fetch
+          git restore --staged package.json
+          git restore package.json
+
+      - name: Stage changes to files
+        run: |
+          git add .
+          git checkout -b temp_javascript_updates
+          git commit -m "Convert template to Javascript"
+          git checkout javascript
+          git pull
+          git checkout -
+          git rebase -m -X theirs javascript
+          git push -f origin temp_javascript_updates:javascript_updates
+
+      - name: Create Javascript PR
+        run: |
+          gh pr view --json mergedAt -q ".mergedAt" javascript_updates | grep -E "^$" || \
+          gh pr create -B javascript -H javascript_updates --title 'Convert template to Javascript' --body 'This is an automated PR that converts the latest changes from Typescript to Javascript'
+        env:
+          GH_TOKEN: ${{ github.token }}
+</file>
+
+<file path="app/shopify.server.ts">
+import "@shopify/shopify-app-remix/adapters/node";
+import {
+  ApiVersion,
+  AppDistribution,
+  shopifyApp,
+} from "@shopify/shopify-app-remix/server";
+import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+import prisma from "./db.server";
+
+const shopify = shopifyApp({
+  apiKey: process.env.SHOPIFY_API_KEY,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiVersion: ApiVersion.January25,
+  scopes: process.env.SCOPES ? process.env.SCOPES.split(",") : [
+    "read_products",
+    "read_customers",
+    "write_customers",
+    "read_discounts",
+    "write_discounts",
+  ],
+  appUrl: process.env.SHOPIFY_APP_URL || "",
+  authPathPrefix: "/auth",
+  sessionStorage: new PrismaSessionStorage(prisma),
+  distribution: AppDistribution.AppStore,
+  future: {
+    unstable_newEmbeddedAuthStrategy: true,
+    expiringOfflineAccessTokens: true,
+  },
+  ...(process.env.SHOP_CUSTOM_DOMAIN
+    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
+    : {}),
+});
+
+export default shopify;
+export const apiVersion = ApiVersion.January25;
+export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
+export const authenticate = shopify.authenticate;
+export const unauthenticated = shopify.unauthenticated;
+export const login = shopify.login;
+export const registerWebhooks = shopify.registerWebhooks;
+export const sessionStorage = shopify.sessionStorage;
+</file>
+
+<file path="README.md">
+# Shopify App Template - Remix
+
+> [!NOTE]
+> **Remix is now React Router.** As of [React Router v7](https://remix.run/blog/merging-remix-and-react-router), Remix and React Router have merged.
+> 
+> For new projects, use the **[Shopify App Template - React Router](https://github.com/Shopify/shopify-app-template-react-router)** instead.
+> 
+> To migrate your existing Remix app, follow the **[migration guide](https://github.com/Shopify/shopify-app-template-react-router/wiki/Upgrading-from-Remix)**.
+
+This is a template for building a [Shopify app](https://shopify.dev/docs/apps/getting-started) using the [Remix](https://remix.run) framework.
+
+Rather than cloning this repo, you can use your preferred package manager and the Shopify CLI with [these steps](https://shopify.dev/docs/apps/getting-started/create).
+
+Visit the [`shopify.dev` documentation](https://shopify.dev/docs/api/shopify-app-remix) for more details on the Remix app package.
+
+## Quick start
+
+### Prerequisites
+
+Before you begin, you'll need the following:
+
+1. **Node.js**: [Download and install](https://nodejs.org/en/download/) it if you haven't already.
+2. **Shopify Partner Account**: [Create an account](https://partners.shopify.com/signup) if you don't have one.
+3. **Test Store**: Set up either a [development store](https://help.shopify.com/en/partners/dashboard/development-stores#create-a-development-store) or a [Shopify Plus sandbox store](https://help.shopify.com/en/partners/dashboard/managing-stores/plus-sandbox-store) for testing your app.
+4. **Shopify CLI**: [Download and install](https://shopify.dev/docs/apps/tools/cli/getting-started) it if you haven't already.
+```shell
+npm install -g @shopify/cli@latest
+```
+
+### Setup
+
+```shell
+shopify app init --template=https://github.com/Shopify/shopify-app-template-remix
+```
+
+### Local Development
+
+```shell
+shopify app dev
+```
+
+
+
+Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your partners account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
+
+### Authenticating and querying data
+
+To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:
+
+```js
+export async function loader({ request }) {
+  const { admin } = await shopify.authenticate.admin(request);
+
+  const response = await admin.graphql(`
+    {
+      products(first: 25) {
+        nodes {
+          title
+          description
+        }
+      }
+    }`);
+
+  const {
+    data: {
+      products: { nodes },
+    },
+  } = await response.json();
+
+  return nodes;
+}
+```
+
+This template comes preconfigured with examples of:
+
+1. Setting up your Shopify app in [/app/shopify.server.ts](https://github.com/Shopify/shopify-app-template-remix/blob/main/app/shopify.server.ts)
+2. Querying data using Graphql. Please see: [/app/routes/app.\_index.tsx](https://github.com/Shopify/shopify-app-template-remix/blob/main/app/routes/app._index.tsx).
+3. Responding to webhooks in individual files such as [/app/routes/webhooks.app.uninstalled.tsx](https://github.com/Shopify/shopify-app-template-remix/blob/main/app/routes/webhooks.app.uninstalled.tsx) and [/app/routes/webhooks.app.scopes_update.tsx](https://github.com/Shopify/shopify-app-template-remix/blob/main/app/routes/webhooks.app.scopes_update.tsx)
+
+Please read the [documentation for @shopify/shopify-app-remix](https://www.npmjs.com/package/@shopify/shopify-app-remix#authenticating-admin-requests) to understand what other API's are available.
+
+## Deployment
+
+### Application Storage
+
+This template uses [Prisma](https://www.prisma.io/) to store session data, by default using an [SQLite](https://www.sqlite.org/index.html) database.
+The database is defined as a Prisma schema in `prisma/schema.prisma`.
+
+This use of SQLite works in production if your app runs as a single instance.
+The database that works best for you depends on the data your app needs and how it is queried.
+You can run your database of choice on a server yourself or host it with a SaaS company.
+Here's a short list of databases providers that provide a free tier to get started:
+
+| Database   | Type             | Hosters                                                                                                                                                                                                                               |
+| ---------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MySQL      | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mysql), [Planet Scale](https://planetscale.com/), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/mysql) |
+| PostgreSQL | SQL              | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-postgresql), [Amazon Aurora](https://aws.amazon.com/rds/aurora/), [Google Cloud SQL](https://cloud.google.com/sql/docs/postgres)                                   |
+| Redis      | Key-value        | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-redis), [Amazon MemoryDB](https://aws.amazon.com/memorydb/)                                                                                                        |
+| MongoDB    | NoSQL / Document | [Digital Ocean](https://www.digitalocean.com/products/managed-databases-mongodb), [MongoDB Atlas](https://www.mongodb.com/atlas/database)                                                                                                  |
+
+To use one of these, you can use a different [datasource provider](https://www.prisma.io/docs/reference/api-reference/prisma-schema-reference#datasource) in your `schema.prisma` file, or a different [SessionStorage adapter package](https://github.com/Shopify/shopify-api-js/blob/main/packages/shopify-api/docs/guides/session-storage.md).
+
+### Build
+
+Remix handles building the app for you, by running the command below with the package manager of your choice:
+
+Using yarn:
+
+```shell
+yarn build
+```
+
+Using npm:
+
+```shell
+npm run build
+```
+
+Using pnpm:
+
+```shell
+pnpm run build
+```
+
+## Hosting
+
+When you're ready to set up your app in production, you can follow [our deployment documentation](https://shopify.dev/docs/apps/deployment/web) to host your app on a cloud provider like [Heroku](https://www.heroku.com/) or [Fly.io](https://fly.io/).
+
+When you reach the step for [setting up environment variables](https://shopify.dev/docs/apps/deployment/web#set-env-vars), you also need to set the variable `NODE_ENV=production`.
+
+### Hosting on Vercel
+
+Using the Vercel Preset is recommended when hosting your Shopify Remix app on Vercel. You'll also want to ensure imports that would normally come from `@remix-run/node` are imported from `@vercel/remix` instead. Learn more about hosting Remix apps on Vercel [here](https://vercel.com/docs/frameworks/remix).
+
+```diff
+// vite.config.ts
+import { vitePlugin as remix } from "@remix-run/dev";
+import { defineConfig, type UserConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
++ import { vercelPreset } from '@vercel/remix/vite';
+
+installGlobals();
+
+export default defineConfig({
+  plugins: [
+    remix({
+      ignoredRouteFiles: ["**/.*"],
++     presets: [vercelPreset()],
+    }),
+    tsconfigPaths(),
+  ],
+});
+```
+
+## Troubleshooting
+
+### Database tables don't exist
+
+If you get this error:
+
+```
+The table `main.Session` does not exist in the current database.
+```
+
+You need to create the database for Prisma. Run the `setup` script in `package.json` using your preferred package manager.
+
+### Navigating/redirecting breaks an embedded app
+
+Embedded Shopify apps must maintain the user session, which can be tricky inside an iFrame. To avoid issues:
+
+1. Use `Link` from `@remix-run/react` or `@shopify/polaris`. Do not use `<a>`.
+2. Use the `redirect` helper returned from `authenticate.admin`. Do not use `redirect` from `@remix-run/node`
+3. Use `useSubmit` or `<Form/>` from `@remix-run/react`. Do not use a lowercase `<form/>`.
+
+This only applies if your app is embedded, which it will be by default.
+
+### Non Embedded
+
+Shopify apps are best when they are embedded in the Shopify Admin, which is how this template is configured. If you have a reason to not embed your app please make the following changes:
+
+1. Ensure `embedded = false` is set in [shopify.app.toml`](./shopify.app.toml). [Docs here](https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration#global).
+2. Pass `isEmbeddedApp: false` to `shopifyApp()` in `./app/shopify.server.js|ts`.
+3. Change the `isEmbeddedApp` prop to `isEmbeddedApp={false}` for the `AppProvider` in `/app/routes/app.jsx|tsx`.
+4. Remove the `@shopify/app-bridge-react` dependency from [package.json](./package.json) and `vite.config.ts|js`.
+5. Remove anything imported from `@shopify/app-bridge-react`.  For example: `NavMenu`, `TitleBar` and `useAppBridge`.
+
+### OAuth goes into a loop when I change my app's scopes
+
+If you change your app's scopes and authentication goes into a loop and fails with a message from Shopify that it tried too many times, you might have forgotten to update your scopes with Shopify.
+To do that, you can run the `deploy` CLI command.
+
+Using yarn:
+
+```shell
+yarn deploy
+```
+
+Using npm:
+
+```shell
+npm run deploy
+```
+
+Using pnpm:
+
+```shell
+pnpm run deploy
+```
+
+### My shop-specific webhook subscriptions aren't updated
+
+If you are registering webhooks in the `afterAuth` hook, using `shopify.registerWebhooks`, you may find that your subscriptions aren't being updated.  
+
+Instead of using the `afterAuth` hook, the recommended approach is to declare app-specific webhooks in the `shopify.app.toml` file.  This approach is easier since Shopify will automatically update changes to webhook subscriptions every time you run `deploy` (e.g: `npm run deploy`).  Please read these guides to understand more:
+
+1. [app-specific vs shop-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions)
+2. [Create a subscription tutorial](https://shopify.dev/docs/apps/build/webhooks/subscribe/get-started?framework=remix&deliveryMethod=https)
+
+If you do need shop-specific webhooks, please keep in mind that the package calls `afterAuth` in 2 scenarios:
+
+- After installing the app
+- When an access token expires
+
+During normal development, the app won't need to re-authenticate most of the time, so shop-specific subscriptions aren't updated. To force your app to update the subscriptions, you can uninstall and reinstall it in your development store. That will force the OAuth process and call the `afterAuth` hook.
+
+### Admin created webhook failing HMAC validation
+
+Webhooks subscriptions created in the [Shopify admin](https://help.shopify.com/en/manual/orders/notifications/webhooks) will fail HMAC validation. This is because the webhook payload is not signed with your app's secret key.  There are 2 solutions:
+
+1. Use [app-specific webhooks](https://shopify.dev/docs/apps/build/webhooks/subscribe#app-specific-subscriptions) defined in your toml file instead (recommended)
+2. Create [webhook subscriptions](https://shopify.dev/docs/api/shopify-app-remix/v1/guide-webhooks) using the `shopifyApp` object.
+
+Test your webhooks with the [Shopify CLI](https://shopify.dev/docs/apps/tools/cli/commands#webhook-trigger) or by triggering events manually in the Shopify admin(e.g. Updating the product title to trigger a `PRODUCTS_UPDATE`).
+
+### Incorrect GraphQL Hints
+
+By default the [graphql.vscode-graphql](https://marketplace.visualstudio.com/items?itemName=GraphQL.vscode-graphql) extension for VS Code will assume that GraphQL queries or mutations are for the [Shopify Admin API](https://shopify.dev/docs/api/admin). This is a sensible default, but it may not be true if:
+
+1. You use another Shopify API such as the storefront API.
+2. You use a third party GraphQL API.
+
+in this situation, please update the [.graphqlrc.ts](https://github.com/Shopify/shopify-app-template-remix/blob/main/.graphqlrc.ts) config.
+
+### First parameter has member 'readable' that is not a ReadableStream.
+
+See [hosting on Vercel](#hosting-on-vercel).
+
+### Admin object undefined on webhook events triggered by the CLI
+
+When you trigger a webhook event using the Shopify CLI, the `admin` object will be `undefined`. This is because the CLI triggers an event with a valid, but non-existent, shop. The `admin` object is only available when the webhook is triggered by a shop that has installed the app.
+
+Webhooks triggered by the CLI are intended for initial experimentation testing of your webhook configuration. For more information on how to test your webhooks, see the [Shopify CLI documentation](https://shopify.dev/docs/apps/tools/cli/commands#webhook-trigger).
+
+### Using Defer & await for streaming responses
+
+To test [streaming using defer/await](https://remix.run/docs/en/main/guides/streaming) during local development you'll need to use the Shopify CLI slightly differently:
+
+1. First setup ngrok: https://ngrok.com/product/secure-tunnels
+2. Create an ngrok tunnel on port 8080: `ngrok http 8080`.
+3. Copy the forwarding address. This should be something like: `https://f355-2607-fea8-bb5c-8700-7972-d2b5-3f2b-94ab.ngrok-free.app`
+4. In a separate terminal run `yarn shopify app dev --tunnel-url=TUNNEL_URL:8080` replacing `TUNNEL_URL` for the address you copied in step 3.
+
+By default the CLI uses a cloudflare tunnel. Unfortunately it cloudflare tunnels wait for the Response stream to finish, then sends one chunk.
+
+This will not affect production, since tunnels are only for local development.
+
+### Using MongoDB and Prisma
+
+By default this template uses SQLlite as the database. It is recommended to move to a persisted database for production. If you choose to use MongoDB, you will need to make some modifications to the schema and prisma configuration. For more information please see the [Prisma MongoDB documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb).
+
+Alternatively you can use a MongDB database directly with the [MongoDB session storage adapter](https://github.com/Shopify/shopify-app-js/tree/main/packages/apps/session-storage/shopify-app-session-storage-mongodb).
+
+#### Mapping the id field
+
+In MongoDB, an ID must be a single field that defines an @id attribute and a @map("\_id") attribute.
+The prisma adapter expects the ID field to be the ID of the session, and not the \_id field of the document.
+
+To make this work you can add a new field to the schema that maps the \_id field to the id field. For more information see the [Prisma documentation](https://www.prisma.io/docs/orm/prisma-schema/data-model/models#defining-an-id-field)
+
+```prisma
+model Session {
+  session_id  String    @id @default(auto()) @map("_id") @db.ObjectId
+  id          String    @unique
+...
+}
+```
+
+#### Error: The "mongodb" provider is not supported with this command
+
+MongoDB does not support the [prisma migrate](https://www.prisma.io/docs/orm/prisma-migrate/understanding-prisma-migrate/overview) command. Instead, you can use the [prisma db push](https://www.prisma.io/docs/orm/reference/prisma-cli-reference#db-push) command and update the `shopify.web.toml` file with the following commands. If you are using MongoDB please see the [Prisma documentation](https://www.prisma.io/docs/orm/overview/databases/mongodb) for more information.
+
+```toml
+[commands]
+predev = "npx prisma generate && npx prisma db push"
+dev = "npm exec remix vite:dev"
+```
+
+#### Prisma needs to perform transactions, which requires your mongodb server to be run as a replica set
+
+See the [Prisma documentation](https://www.prisma.io/docs/getting-started/setup-prisma/start-from-scratch/mongodb/connect-your-database-node-mongodb) for connecting to a MongoDB database.
+
+### I want to use Polaris v13.0.0 or higher
+
+Currently, this template is set up to work on node v18.20 or higher. However, `@shopify/polaris` is limited to v12 because v13 can only run on node v20+.
+
+You don't have to make any changes to the code in order to be able to upgrade Polaris to v13, but you'll need to do the following:
+
+- Upgrade your node version to v20.10 or higher.
+- Update your `Dockerfile` to pull `FROM node:20-alpine` instead of `node:18-alpine`
+
+### "nbf" claim timestamp check failed
+
+This error will occur of the `nbf` claim timestamp check failed. This is because the JWT token is expired.
+If you  are consistently getting this error, it could be that the clock on your machine is not in sync with the server.
+
+To fix this ensure you have enabled `Set time and date automatically` in the `Date and Time` settings on your computer.
+
+## Benefits
+
+Shopify apps are built on a variety of Shopify tools to create a great merchant experience.
+
+<!-- TODO: Uncomment this after we've updated the docs -->
+<!-- The [create an app](https://shopify.dev/docs/apps/getting-started/create) tutorial in our developer documentation will guide you through creating a Shopify app using this template. -->
+
+The Remix app template comes with the following out-of-the-box functionality:
+
+- [OAuth](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#authenticating-admin-requests): Installing the app and granting permissions
+- [GraphQL Admin API](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#using-the-shopify-admin-graphql-api): Querying or mutating Shopify admin data
+- [Webhooks](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#authenticating-webhook-requests): Callbacks sent by Shopify when certain events occur
+- [AppBridge](https://shopify.dev/docs/api/app-bridge): This template uses the next generation of the Shopify App Bridge library which works in unison with previous versions.
+- [Polaris](https://polaris.shopify.com/): Design system that enables apps to create Shopify-like experiences
+
+## Tech Stack
+
+This template uses [Remix](https://remix.run). The following Shopify tools are also included to ease app development:
+
+- [Shopify App Remix](https://shopify.dev/docs/api/shopify-app-remix) provides authentication and methods for interacting with Shopify APIs.
+- [Shopify App Bridge](https://shopify.dev/docs/apps/tools/app-bridge) allows your app to seamlessly integrate your app within Shopify's Admin.
+- [Polaris React](https://polaris.shopify.com/) is a powerful design system and component library that helps developers build high quality, consistent experiences for Shopify merchants.
+- [Webhooks](https://github.com/Shopify/shopify-app-js/tree/main/packages/shopify-app-remix#authenticating-webhook-requests): Callbacks sent by Shopify when certain events occur
+- [Polaris](https://polaris.shopify.com/): Design system that enables apps to create Shopify-like experiences
+
+## Resources
+
+- [Remix Docs](https://remix.run/docs/en/v1)
+- [Shopify App Remix](https://shopify.dev/docs/api/shopify-app-remix)
+- [Introduction to Shopify apps](https://shopify.dev/docs/apps/getting-started)
+- [App authentication](https://shopify.dev/docs/apps/auth)
+- [Shopify CLI](https://shopify.dev/docs/apps/tools/cli)
+- [App extensions](https://shopify.dev/docs/apps/app-extensions/list)
+- [Shopify Functions](https://shopify.dev/docs/api/functions)
+- [Getting started with internationalizing your app](https://shopify.dev/docs/apps/best-practices/internationalization/getting-started)
+# Geepas-Warranty-
+# Geepas-Warranty-
+</file>
+
+<file path="CHANGELOG.md">
+# @shopify/shopify-app-template-remix
+
+## 2025.12.11
+
+- [#1201](https://github.com/Shopify/shopify-app-template-remix/pull/1201) Update `@shopify/shopify-app-remix` to v4.1.0 and `@shopify/shopify-app-session-storage-prisma` to v8.0.0, add refresh token fields (`refreshToken` and `refreshTokenExpires`) to Session model in Prisma schema, and adopt the `expiringOfflineAccessTokens` flag for enhanced security through token rotation. See [expiring vs non-expiring offline tokens](https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/offline-access-tokens#expiring-vs-non-expiring-offline-tokens) for more information.
+
+## 2025.10.01
+
+**Remix is now React Router.** As of [React Router v7](https://remix.run/blog/merging-remix-and-react-router), Remix and React Router have merged.
+
+For new projects, use the **[Shopify App Template - React Router](https://github.com/Shopify/shopify-app-template-react-router)** instead.
+
+To migrate your existing Remix app, follow the **[migration guide](https://github.com/Shopify/shopify-app-template-react-router/wiki/Upgrading-from-Remix)**.
+
+## 2025.08.16
+- [#52](https://github.com/Shopify/shopify-app-template-remix/pull/1153) Use `ApiVersion.July25` rather than `LATEST_API_VERSION` in `.graphqlrc`.
+
+## 2025.07.07
+- [#1103](https://github.com/Shopify/shopify-app-template-remix/pull/1086) Remove deprecated .npmrc config values
+
+## 2025.06.12
+- [#1075](https://github.com/Shopify/shopify-app-template-remix/pull/1075) Add Shopify MCP to [VSCode configs](https://code.visualstudio.com/docs/copilot/chat/mcp-servers#_enable-mcp-support-in-vs-code)
+
+## 2025.06.12
+-[#1082](https://github.com/Shopify/shopify-app-template-remix/pull/1082) Remove local Shopify CLI from the template. Developers should use the Shopify CLI [installed globally](https://shopify.dev/docs/api/shopify-cli#installation).
+## 2025.03.18
+-[#998](https://github.com/Shopify/shopify-app-template-remix/pull/998) Update to Vite 6
+
+## 2025.03.01
+- [#982](https://github.com/Shopify/shopify-app-template-remix/pull/982) Add Shopify Dev Assistant extension to the VSCode extension recommendations
+
+## 2025.01.31
+- [#952](https://github.com/Shopify/shopify-app-template-remix/pull/952) Update to Shopify App API v2025-01
+
+## 2025.01.23
+
+- [#923](https://github.com/Shopify/shopify-app-template-remix/pull/923) Update `@shopify/shopify-app-session-storage-prisma` to v6.0.0
+
+## 2025.01.8
+
+- [#923](https://github.com/Shopify/shopify-app-template-remix/pull/923) Enable GraphQL autocomplete for Javascript
+
+## 2024.12.19
+
+- [#904](https://github.com/Shopify/shopify-app-template-remix/pull/904) bump `@shopify/app-bridge-react` to latest
+-
+## 2024.12.18
+
+- [875](https://github.com/Shopify/shopify-app-template-remix/pull/875) Add Scopes Update Webhook
+## 2024.12.05
+
+- [#910](https://github.com/Shopify/shopify-app-template-remix/pull/910) Install `openssl` in Docker image to fix Prisma (see [#25817](https://github.com/prisma/prisma/issues/25817#issuecomment-2538544254))
+- [#907](https://github.com/Shopify/shopify-app-template-remix/pull/907) Move `@remix-run/fs-routes` to `dependencies` to fix Docker image build
+- [#899](https://github.com/Shopify/shopify-app-template-remix/pull/899) Disable v3_singleFetch flag
+- [#898](https://github.com/Shopify/shopify-app-template-remix/pull/898) Enable the `removeRest` future flag so new apps aren't tempted to use the REST Admin API.
+
+## 2024.12.04
+
+- [#891](https://github.com/Shopify/shopify-app-template-remix/pull/891) Enable remix future flags.
+
+## 2024.11.26
+- [888](https://github.com/Shopify/shopify-app-template-remix/pull/888) Update restResources version to 2024-10
+
+## 2024.11.06
+
+- [881](https://github.com/Shopify/shopify-app-template-remix/pull/881) Update to the productCreate mutation to use the new ProductCreateInput type
+
+## 2024.10.29
+
+- [876](https://github.com/Shopify/shopify-app-template-remix/pull/876) Update shopify-app-remix to v3.4.0 and shopify-app-session-storage-prisma to v5.1.5
+
+## 2024.10.02
+
+- [863](https://github.com/Shopify/shopify-app-template-remix/pull/863) Update to Shopify App API v2024-10 and shopify-app-remix v3.3.2
+
+## 2024.09.18
+
+- [850](https://github.com/Shopify/shopify-app-template-remix/pull/850) Removed "~" import alias
+
+## 2024.09.17
+
+- [842](https://github.com/Shopify/shopify-app-template-remix/pull/842) Move webhook processing to individual routes
+
+## 2024.08.19
+
+Replaced deprecated `productVariantUpdate` with `productVariantsBulkUpdate`
+
+## v2024.08.06
+
+Allow `SHOP_REDACT` webhook to process without admin context
+
+## v2024.07.16
+
+Started tracking changes and releases using calver
+</file>
+
+<file path="package.json">
+{
+  "name": "app",
+  "private": true,
+  "scripts": {
+    "build": "remix vite:build",
+    "dev": "shopify app dev",
+    "config:link": "shopify app config link",
+    "generate": "shopify app generate",
+    "deploy": "shopify app deploy",
+    "config:use": "shopify app config use",
+    "env": "shopify app env",
+    "start": "remix-serve ./build/server/index.js",
+    "docker-start": "npm run setup && npm run start",
+    "setup": "prisma generate && prisma migrate deploy",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "shopify": "shopify",
+    "prisma": "prisma",
+    "graphql-codegen": "graphql-codegen",
+    "vite": "vite"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20.19 <22 || >=22.12"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "@remix-run/dev": "^2.16.1",
+    "@remix-run/fs-routes": "^2.16.1",
+    "@remix-run/node": "^2.16.1",
+    "@remix-run/react": "^2.16.1",
+    "@remix-run/serve": "^2.16.1",
+    "@shopify/app-bridge-react": "^4.1.6",
+    "@shopify/polaris": "^12.0.0",
+    "@shopify/shopify-app-remix": "^4.1.0",
+    "@shopify/shopify-app-session-storage-prisma": "^8.0.0",
+    "isbot": "^5.1.0",
+    "prisma": "^6.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "vite-tsconfig-paths": "^5.0.1"
+  },
+  "devDependencies": {
+    "@remix-run/eslint-config": "^2.16.1",
+    "@remix-run/route-config": "^2.16.1",
+    "@shopify/api-codegen-preset": "^1.1.1",
+    "@types/eslint": "^9.6.1",
+    "@types/node": "^22.2.0",
+    "@types/react": "^18.2.31",
+    "@types/react-dom": "^18.2.14",
+    "eslint": "^8.42.0",
+    "eslint-config-prettier": "^10.0.1",
+    "prettier": "^3.2.4",
+    "typescript": "^5.2.2",
+    "vite": "^6.2.2"
+  },
+  "workspaces": {
+    "packages": [
+      "extensions/*"
+    ]
+  },
+  "trustedDependencies": [
+    "@shopify/plugin-cloudflare"
+  ],
+  "resolutions": {
+    "@graphql-tools/url-loader": "8.0.16",
+    "@graphql-codegen/client-preset": "4.7.0",
+    "@graphql-codegen/typescript-operations": "4.5.0",
+    "minimatch": "9.0.5",
+    "vite": "^6.2.2"
+  },
+  "overrides": {
+    "@graphql-tools/url-loader": "8.0.16",
+    "@graphql-codegen/client-preset": "4.7.0",
+    "@graphql-codegen/typescript-operations": "4.5.0",
+    "minimatch": "9.0.5",
+    "vite": "^6.2.2"
+  },
+  "packageManager": "pnpm@10.27.0+sha512.72d699da16b1179c14ba9e64dc71c9a40988cbdc65c264cb0e489db7de917f20dcf4d64d8723625f2969ba52d4b7e2a1170682d9ac2a5dcaeaab732b7e16f04a"
+}
+</file>
+
+</files>

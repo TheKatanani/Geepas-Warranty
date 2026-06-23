@@ -16,7 +16,14 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext
 ) {
-  addDocumentResponseHeaders(request, responseHeaders);
+  // Public routes must not have Shopify's frame-ancestors CSP (they're embedded in iframes)
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith("/public/")) {
+    addDocumentResponseHeaders(request, responseHeaders);
+  } else {
+    responseHeaders.set("X-Frame-Options", "ALLOWALL");
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors *");
+  }
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? '')
     ? "onAllReady"

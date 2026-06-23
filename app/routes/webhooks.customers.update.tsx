@@ -19,6 +19,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     tags?: string;
   };
 
+  console.log(`[${topic}] customer ${customer.id} tags: "${customer.tags}"`);
+
   const tags: string[] = (customer.tags ?? "")
     .split(",")
     .map((t: string) => t.trim())

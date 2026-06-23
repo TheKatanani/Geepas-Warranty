@@ -2,25 +2,8 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
-import {
-  normalizePhone,
-  sendSms,
-  buildWarrantyConfirmationSms,
-} from "../utils/twilio.server";
+import { normalizePhone } from "../utils/twilio.server";
 
-const WEBSITE_URL = process.env.WEBSITE_URL || "https://geepas.com";
-
-/**
- * Generate a unique discount code string.
- */
-function generateDiscountCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "GEEPAS15-";
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
 
 /**
  * POST /api/warranty
@@ -28,11 +11,12 @@ function generateDiscountCode(): string {
  * Full warranty registration flow:
  * 1. Validate input
  * 2. Normalize phone number
- * 3. Resolve or create Shopify customer
+ * 3. Resolve or create Shopify customer (tagged "warranty-registered")
  * 4. Check reward eligibility (no stacking, no duplicates)
  * 5. Save registration + products
- * 6. Create Shopify discount code if eligible
- * 7. Send SMS via Twilio
+ * 6. Record CustomerReward row if first-time registrant
+ *
+ * Discount code creation and customer messaging are handled by Shopify Flow.
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
@@ -85,8 +69,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
       console.log("[api.warranty] Normalized phone:", normalizedPhone);
 
-      // Look up existing customer by phone
-      console.log("[api.warranty] Looking up customer by phone:", normalizedPhone);
       const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
       if (lookupResult) {
         console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
@@ -104,13 +86,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // --- Check Reward Eligibility ---
       // Rule: No stacking, no duplicates. Phone is source of truth.
       const existingReward = await prisma.customerReward.findFirst({
-        where: {
-          shop,
-          phone: normalizedPhone,
-        },
+        where: { shop, phone: normalizedPhone },
       });
 
-      // Save warranty registration
+      // --- Save Warranty Registration ---
       const registration = await prisma.warrantyRegistration.create({
         data: {
           shop,
@@ -135,70 +114,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         include: { products: true },
       });
 
-      // --- Discount Code Generation ---
-      let discountCode: string | null = null;
+      // --- Record First-Time Reward Eligibility ---
+      // Discount code creation is delegated to Shopify Flow (triggered by
+      // the "warranty-registered" tag on the customer). We only track
+      // eligibility here so the no-stacking rule works on subsequent registrations.
       let rewardCreated = false;
-
       if (!existingReward) {
-        // Eligible for WARRANTY_15 — no prior reward of any type
-        discountCode = generateDiscountCode();
-
-        try {
-          // Create Shopify discount code via GraphQL
-          await createShopifyDiscountCode(admin, discountCode, customerId);
-          rewardCreated = true;
-        } catch (discountErr) {
-          console.error(
-            "[api.warranty] Failed to create Shopify discount:",
-            discountErr
-          );
-          // Continue — don't block registration because discount failed
-        }
-
-        if (rewardCreated) {
-          await prisma.customerReward.create({
-            data: {
-              shop,
-              phone: normalizedPhone,
-              customerId,
-              rewardType: "WARRANTY_15",
-              discountCode,
-            },
-          });
-        }
+        await prisma.customerReward.create({
+          data: {
+            shop,
+            phone: normalizedPhone,
+            customerId,
+            rewardType: "WARRANTY_15",
+            discountCode: null,
+          },
+        });
+        rewardCreated = true;
       }
-
-      // --- SMS ---
-      const smsBody = buildWarrantyConfirmationSms(
-        firstName.trim(),
-        rewardCreated ? discountCode : null,
-        WEBSITE_URL
-      );
-
-      const smsResult = await sendSms(normalizedPhone, smsBody);
-
-      // Log SMS
-      await prisma.sMSLog.create({
-        data: {
-          shop,
-          phone: normalizedPhone,
-          registrationId: registration.id,
-          rewardId: rewardCreated
-            ? (
-                await prisma.customerReward.findFirst({
-                  where: {
-                    shop,
-                    phone: normalizedPhone,
-                    rewardType: "WARRANTY_15",
-                  },
-                })
-              )?.id || null
-            : null,
-          smsSent: smsResult.success,
-          smsSentAt: smsResult.success ? new Date() : null,
-          smsProviderResponse: smsResult.rawResponse || smsResult.error || null,
-        },
-      });
 
       return json(
         {
@@ -209,11 +141,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             productsCount: registration.products.length,
           },
           reward: rewardCreated
-            ? { discountCode, type: "WARRANTY_15" }
+            ? { type: "WARRANTY_15", note: "Discount code will be sent via WhatsApp by Shopify Flow." }
             : existingReward
               ? { message: "Customer already has a reward on record." }
               : null,
-          smsSent: smsResult.success,
         },
         { status: 201 }
       );
@@ -230,10 +161,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   } catch (error: any) {
     console.error("[api.warranty] Parse error:", error);
-    return json(
-      { error: "Invalid request body." },
-      { status: 400 }
-    );
+    return json({ error: "Invalid request body." }, { status: 400 });
   }
 };
 
@@ -253,7 +181,7 @@ async function lookupCustomerByPhone(
       }
     }`;
   const variables = { query: `phone:${phone}` };
-  console.log("[lookupCustomerByPhone] Shopify lookup query:", query, "variables:", variables);
+  console.log("[lookupCustomerByPhone] Shopify lookup variables:", variables);
 
   const response = await admin.graphql(query, { variables });
   const data = await response.json();
@@ -273,7 +201,6 @@ async function createOrUpdateShopifyCustomer(
   admin: any,
   input: { firstName: string; email: string; phone: string }
 ): Promise<string> {
-  // First check if email already exists on another customer
   const queryEmail = `#graphql
     query customerByEmail($query: String!) {
       customers(first: 1, query: $query) {
@@ -286,7 +213,7 @@ async function createOrUpdateShopifyCustomer(
       }
     }`;
   const variablesEmail = { query: `email:${input.email}` };
-  console.log("[createOrUpdateShopifyCustomer] Checking existing email query:", queryEmail, "variables:", variablesEmail);
+  console.log("[createOrUpdateShopifyCustomer] Checking existing email:", variablesEmail);
 
   const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
   const emailCheckData = await emailCheckResponse.json();
@@ -302,30 +229,18 @@ async function createOrUpdateShopifyCustomer(
     const existing = existingByEmail[0].node;
     console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
 
-    // If email exists but phone is different, update the existing customer's phone
     if (existing.phone !== input.phone) {
       console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
       const mutationUpdate = `#graphql
         mutation customerUpdate($input: CustomerInput!) {
           customerUpdate(input: $input) {
-            customer {
-              id
-            }
-            userErrors {
-              field
-              message
-            }
+            customer { id }
+            userErrors { field message }
           }
         }`;
       const variablesUpdate = {
-        input: {
-          id: existing.id,
-          phone: input.phone,
-          tags: ["warranty-registered"],
-        },
+        input: { id: existing.id, phone: input.phone, tags: ["warranty-registered"] },
       };
-      console.log("[createOrUpdateShopifyCustomer] Update mutation:", mutationUpdate, "variables:", variablesUpdate);
-
       const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
       const updateData = await updateResponse.json();
       console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
@@ -342,17 +257,12 @@ async function createOrUpdateShopifyCustomer(
   }
 
   // Create new customer
-  console.log("[createOrUpdateShopifyCustomer] Creating new customer with details:", input);
+  console.log("[createOrUpdateShopifyCustomer] Creating new customer:", input);
   const mutationCreate = `#graphql
     mutation customerCreate($input: CustomerInput!) {
       customerCreate(input: $input) {
-        customer {
-          id
-        }
-        userErrors {
-          field
-          message
-        }
+        customer { id }
+        userErrors { field message }
       }
     }`;
   const variablesCreate = {
@@ -363,7 +273,6 @@ async function createOrUpdateShopifyCustomer(
       tags: ["warranty-registered"],
     },
   };
-  console.log("[createOrUpdateShopifyCustomer] Create mutation:", mutationCreate, "variables:", variablesCreate);
 
   const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
   const createData = await createResponse.json();
@@ -372,12 +281,8 @@ async function createOrUpdateShopifyCustomer(
   const userErrors = createData?.data?.customerCreate?.userErrors || [];
   if (userErrors.length > 0) {
     console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
-    // If customer creation fails (e.g. email/phone taken), try lookup by phone
-    console.log("[createOrUpdateShopifyCustomer] Customer creation failed. Falling back to lookup by phone:", input.phone);
-    const fallbackId = await lookupCustomerByPhone(
-      admin,
-      input.phone
-    );
+    console.log("[createOrUpdateShopifyCustomer] Falling back to phone lookup:", input.phone);
+    const fallbackId = await lookupCustomerByPhone(admin, input.phone);
     if (fallbackId) {
       console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
       return fallbackId;
@@ -392,102 +297,28 @@ async function createOrUpdateShopifyCustomer(
     throw new Error("Customer creation returned no ID.");
   }
 
-  console.log("[createOrUpdateShopifyCustomer] Customer created successfully. ID:", newCustomerId);
+  console.log("[createOrUpdateShopifyCustomer] Customer created. ID:", newCustomerId);
 
   // Send activation email invite
   try {
     const mutationInvite = `#graphql
       mutation customerSendAccountInviteEmail($customerId: ID!) {
         customerSendAccountInviteEmail(customerId: $customerId) {
-          customer {
-            id
-          }
-          userErrors {
-            field
-            message
-          }
+          customer { id }
+          userErrors { field message }
         }
       }`;
-    console.log("[createOrUpdateShopifyCustomer] Sending account invite for ID:", newCustomerId);
     const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
     const inviteData = await inviteResponse.json();
-    console.log("[createOrUpdateShopifyCustomer] Send invite response:", JSON.stringify(inviteData, null, 2));
     const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
     if (inviteErrors.length > 0) {
       console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
     }
   } catch (inviteErr) {
-    // Non-critical — don't block the flow
-    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed:", inviteErr);
+    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed (non-critical):", inviteErr);
   }
 
   return newCustomerId;
-}
-
-// ---- Helper: Create Shopify discount code ----
-async function createShopifyDiscountCode(
-  admin: any,
-  code: string,
-  customerId: string
-): Promise<void> {
-  // Create a basic discount code using the discountCodeBasicCreate mutation
-  const startsAt = new Date().toISOString();
-
-  const response = await admin.graphql(
-    `#graphql
-    mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
-      discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
-        codeDiscountNode {
-          id
-          codeDiscount {
-            ... on DiscountCodeBasic {
-              codes(first: 1) {
-                edges {
-                  node {
-                    code
-                  }
-                }
-              }
-            }
-          }
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`,
-    {
-      variables: {
-        basicCodeDiscount: {
-          title: `Warranty 15% - ${code}`,
-          code,
-          startsAt,
-          customerSelection: {
-            all: true,
-          },
-          customerGets: {
-            value: {
-              percentage: 0.15,
-            },
-            items: {
-              all: true,
-            },
-          },
-          usageLimit: 1,
-        },
-      },
-    }
-  );
-
-  const data = await response.json();
-  const userErrors =
-    data?.data?.discountCodeBasicCreate?.userErrors || [];
-
-  if (userErrors.length > 0) {
-    console.error("[discount] Creation errors:", userErrors);
-    throw new Error(userErrors.map((e: any) => e.message).join(", "));
-  }
 }
 
 // ---- Helper: Ensure warranty-registered tag is on the customer ----
@@ -512,7 +343,6 @@ async function tagCustomerWarrantyRegistered(
       console.warn("[tagCustomerWarrantyRegistered] userErrors:", errors);
     }
   } catch (err) {
-    // Non-critical — don't block the registration flow
-    console.warn("[tagCustomerWarrantyRegistered] Failed:", err);
+    console.warn("[tagCustomerWarrantyRegistered] Failed (non-critical):", err);
   }
 }

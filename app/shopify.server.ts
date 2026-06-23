@@ -15,8 +15,6 @@ const shopify = shopifyApp({
     "read_products",
     "read_customers",
     "write_customers",
-    "read_discounts",
-    "write_discounts",
   ],
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",

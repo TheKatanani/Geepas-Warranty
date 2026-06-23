@@ -321,6 +321,7 @@ async function createOrUpdateShopifyCustomer(
         input: {
           id: existing.id,
           phone: input.phone,
+          tags: ["warranty-registered"],
         },
       };
       console.log("[createOrUpdateShopifyCustomer] Update mutation:", mutationUpdate, "variables:", variablesUpdate);
@@ -335,6 +336,8 @@ async function createOrUpdateShopifyCustomer(
       }
     }
 
+    // Always ensure the tag is present regardless of whether phone changed
+    await tagCustomerWarrantyRegistered(admin, existing.id);
     return existing.id;
   }
 
@@ -357,6 +360,7 @@ async function createOrUpdateShopifyCustomer(
       firstName: input.firstName,
       email: input.email,
       phone: input.phone,
+      tags: ["warranty-registered"],
     },
   };
   console.log("[createOrUpdateShopifyCustomer] Create mutation:", mutationCreate, "variables:", variablesCreate);
@@ -483,5 +487,32 @@ async function createShopifyDiscountCode(
   if (userErrors.length > 0) {
     console.error("[discount] Creation errors:", userErrors);
     throw new Error(userErrors.map((e: any) => e.message).join(", "));
+  }
+}
+
+// ---- Helper: Ensure warranty-registered tag is on the customer ----
+// Uses tagsAdd so it never overwrites existing tags.
+async function tagCustomerWarrantyRegistered(
+  admin: any,
+  customerId: string
+): Promise<void> {
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      mutation tagsAdd($id: ID!, $tags: [String!]!) {
+        tagsAdd(id: $id, tags: $tags) {
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: customerId, tags: ["warranty-registered"] } }
+    );
+    const data = await response.json();
+    const errors = data?.data?.tagsAdd?.userErrors || [];
+    if (errors.length > 0) {
+      console.warn("[tagCustomerWarrantyRegistered] userErrors:", errors);
+    }
+  } catch (err) {
+    // Non-critical — don't block the registration flow
+    console.warn("[tagCustomerWarrantyRegistered] Failed:", err);
   }
 }

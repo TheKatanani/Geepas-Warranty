@@ -269,12 +269,12 @@ const GEEPAS_CSS = `
     border-radius: 14px;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-    margin-top: 8px;
+    margin: auto;
   }
 
   /* ---- Header ---- */
   .gw-header {
-    background: #E31E24;
+    background: #3b4043;
     padding: 22px 28px 20px;
   }
   .gw-header-top {
@@ -358,7 +358,7 @@ const GEEPAS_CSS = `
     flex-shrink: 0;
     transition: background 0.25s, color 0.25s;
   }
-  .gw-p-dot--on { background: #E31E24; color: #fff; }
+  .gw-p-dot--on { background: #3b4043; color: #fff; }
   .gw-p-label {
     font-size: 11px;
     color: #aaa;
@@ -366,7 +366,7 @@ const GEEPAS_CSS = `
     margin: 0 6px;
     white-space: nowrap;
   }
-  .gw-p-label--on { color: #E31E24; font-weight: 700; }
+  .gw-p-label--on { color: #3b4043; font-weight: 700; }
   .gw-p-line {
     width: 30px;
     height: 2px;
@@ -374,7 +374,7 @@ const GEEPAS_CSS = `
     flex-shrink: 0;
     transition: background 0.25s;
   }
-  .gw-p-line--on { background: #E31E24; }
+  .gw-p-line--on { background: #3b4043; }
 
   /* ---- Step layout ---- */
   .gw-step { display: flex; flex-direction: column; gap: 18px; }
@@ -400,7 +400,7 @@ const GEEPAS_CSS = `
   .gw-form { display: flex; flex-direction: column; gap: 15px; }
   .gw-field { display: flex; flex-direction: column; gap: 5px; }
   .gw-label { font-size: 13px; font-weight: 600; color: #333; }
-  .gw-req { color: #E31E24; }
+  .gw-req { color: #3b4043; }
 
   .gw-input {
     padding: 11px 13px;
@@ -417,11 +417,11 @@ const GEEPAS_CSS = `
     appearance: none;
   }
   .gw-input:focus {
-    border-color: #E31E24;
-    box-shadow: 0 0 0 3px rgba(227,30,36,0.10);
+    border-color: #3b4043;
+    box-shadow: 0 0 0 3px rgba(59,64,67,0.10);
     background: #fff;
   }
-  .gw-input--err { border-color: #E31E24 !important; box-shadow: 0 0 0 3px rgba(227,30,36,0.10) !important; }
+  .gw-input--err { border-color: #3b4043 !important; box-shadow: 0 0 0 3px rgba(59,64,67,0.10) !important; }
   .gw-input--ro  { background: #f0f0f0 !important; color: #888 !important; cursor: default; }
 
   .gw-select {
@@ -457,7 +457,7 @@ const GEEPAS_CSS = `
     font-size: 15px;
     font-weight: 600;
     color: #fff;
-    background: #E31E24;
+    background: #3b4043;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -468,14 +468,14 @@ const GEEPAS_CSS = `
     display: block;
     line-height: 1;
   }
-  .gw-btn:hover:not(:disabled)  { background: #c0181e; }
+  .gw-btn:hover:not(:disabled)  { background: #2a2e31; }
   .gw-btn:active:not(:disabled) { background: #a8151a; }
   .gw-btn:disabled              { opacity: 0.55; cursor: not-allowed; }
 
   .gw-btn--sec {
     background: #fff;
-    color: #E31E24;
-    border: 1.5px solid #E31E24;
+    color: #3b4043;
+    border: 1.5px solid #3b4043;
     width: auto;
     flex-shrink: 0;
   }
@@ -492,7 +492,7 @@ const GEEPAS_CSS = `
   .gw-link-btn {
     background: none;
     border: none;
-    color: #E31E24;
+    color: #3b4043;
     cursor: pointer;
     font-size: 13px;
     font-weight: 500;
@@ -503,7 +503,7 @@ const GEEPAS_CSS = `
     text-align: left;
   }
   [dir="rtl"] .gw-link-btn { text-align: right; }
-  .gw-link-btn:hover { color: #c0181e; }
+  .gw-link-btn:hover { color: #2a2e31; }
 
   /* ---- Product search ---- */
   .gw-hint { font-size: 12px; color: #aaa; margin: 0; }
@@ -545,7 +545,7 @@ const GEEPAS_CSS = `
     font-size: 13px;
     font-weight: 600;
     color: #fff;
-    background: #E31E24;
+    background: #3b4043;
     border: none;
     border-radius: 8px;
     cursor: pointer;
@@ -554,7 +554,7 @@ const GEEPAS_CSS = `
     transition: background 0.2s;
     flex-shrink: 0;
   }
-  .gw-add-btn:hover:not(:disabled)  { background: #c0181e; }
+  .gw-add-btn:hover:not(:disabled)  { background: #2a2e31; }
   .gw-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ---- Product list ---- */
@@ -589,7 +589,7 @@ const GEEPAS_CSS = `
   .gw-rm-btn {
     background: none;
     border: none;
-    color: #E31E24;
+    color: #3b4043;
     cursor: pointer;
     font-size: 15px;
     padding: 3px 7px;
@@ -607,7 +607,7 @@ const GEEPAS_CSS = `
   .gw-rev-head {
     font-size: 11px;
     font-weight: 700;
-    color: #E31E24;
+    color: #3b4043;
     text-transform: uppercase;
     letter-spacing: 0.8px;
     margin: 0 0 10px;
@@ -634,7 +634,7 @@ const GEEPAS_CSS = `
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: #E31E24;
+    background: #3b4043;
     color: #fff;
     font-size: 30px;
     display: flex;

@@ -20,7 +20,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   };
 
   console.log(`[${topic}] customer ${customer.id} tags: "${customer.tags}"`);
-
+  console.log(`[${topic}] full payload: ${JSON.stringify(payload)}`);
   const tags: string[] = (customer.tags ?? "")
     .split(",")
     .map((t: string) => t.trim())
@@ -52,14 +52,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // Send WhatsApp notification
   await sendWhatsappTemplate(phone, templateName, [name, code]);
-  console.log(`[customers/update] Sent ${templateName} to ${phone} (tier=${tier}, code=${code})`);
+  console.log(
+    `[customers/update] Sent ${templateName} to ${phone} (tier=${tier}, code=${code})`,
+  );
 
   // Remove the voucher-ready tag so this doesn't fire again on next update
   const customerId = `gid://shopify/Customer/${customer.id}`;
   const remainingTags = tags.filter((t) => t !== voucherTag);
 
   try {
-    const { admin } = await (await import("../shopify.server")).unauthenticated.admin(shop);
+    const { admin } = await (
+      await import("../shopify.server")
+    ).unauthenticated.admin(shop);
 
     const response = await admin.graphql(
       `#graphql
@@ -69,7 +73,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           userErrors { field message }
         }
       }`,
-      { variables: { input: { id: customerId, tags: remainingTags } } }
+      { variables: { input: { id: customerId, tags: remainingTags } } },
     );
 
     const data = await response.json();
@@ -77,7 +81,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (errors.length > 0) {
       console.error("[customers/update] Failed to remove voucher tag:", errors);
     } else {
-      console.log(`[customers/update] Removed tag "${voucherTag}" from customer ${customerId}`);
+      console.log(
+        `[customers/update] Removed tag "${voucherTag}" from customer ${customerId}`,
+      );
     }
   } catch (err) {
     console.error("[customers/update] Error removing voucher tag:", err);

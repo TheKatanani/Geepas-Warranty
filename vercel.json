@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/cron.process-vouchers",
+      "schedule": "*/2 * * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/public/warranty-register(.*)",

@@ -18,8 +18,9 @@ api_version = "2026-07"
   topics = [ "app/uninstalled" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/customers/update"
   topics = [ "customers/update" ]
+  uri = "/webhooks/customers/update"
+  include_fields = [ "tags", "phone", "first_name", "id" ]
 
 [access_scopes]
 scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"

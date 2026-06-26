@@ -110,7 +110,7 @@ async function sendOnce(
         from: INFOBIP_SENDER,
         destinations: [{ to: phone }],
         text: message,
-        smsFormat: "UNICODE",
+        language: { languageCode: "AR" },
       },
     ],
   };

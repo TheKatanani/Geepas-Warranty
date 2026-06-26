@@ -3,6 +3,8 @@ import { sendWhatsappTemplate } from "./whatsapp.server";
 const TIER_TO_TEMPLATE: Record<string, string> = {
   WELCOME10: "welcome_voucher",
   WARRANTY15: "warranty_voucher",
+  NEXT15: "next_purchase_voucher",
+  SECOND15: "second_purchase_voucher",
 };
 
 export interface VoucherCustomer {

@@ -101,11 +101,45 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (!result.success) {
     console.error(`[${topic}] SMS failed for ${normalizedPhone}:`, result.error);
-    // Still return 200 — Shopify will not retry on app errors, and we've logged it
+    // Return 200 — Shopify won't retry on app-level errors and we've logged it.
+    // The voucher-ready tag is intentionally left on the customer so a manual
+    // retry (or future cron) can pick it up.
     return new Response(null, { status: 200 });
   }
 
   console.log(`[${topic}] SMS sent. messageId=${result.messageId}`);
+
+  // Create CustomerReward now that the discount code exists.
+  // This is intentionally done after SMS succeeds — if SMS fails we leave
+  // the tag in place so the send can be retried without issuing a duplicate reward.
+  try {
+    const [, tier, code] = voucherTag.split(":");
+    await prisma.customerReward.upsert({
+      where: {
+        shop_phone_rewardType: {
+          shop,
+          phone: normalizedPhone,
+          rewardType: tier,
+        },
+      },
+      update: {
+        discountCode: code,
+        sentAt: new Date(),
+      },
+      create: {
+        shop,
+        phone: normalizedPhone,
+        customerId: `gid://shopify/Customer/${raw.id}`,
+        rewardType: tier,
+        discountCode: code,
+        sentAt: new Date(),
+      },
+    });
+    console.log(`[${topic}] CustomerReward upserted for ${normalizedPhone} tier=${tier} code=${code}`);
+  } catch (rewardErr) {
+    // Non-fatal — customer received their SMS and code. Log and continue.
+    console.error(`[${topic}] CustomerReward upsert failed (non-fatal):`, rewardErr);
+  }
 
   // Remove the voucher-ready tag so this webhook doesn't re-trigger on the
   // next customer update

@@ -6,13 +6,16 @@
 Customer fills warranty form
         │
         ▼
-POST /api/warranty
+POST /api/warranty                          PHASE 1 — REGISTRATION
   • Creates/finds Shopify customer
   • Adds tag: warranty-registered
   • Saves WarrantyRegistration to DB
+  • Does NOT create CustomerReward yet
+    (discount code doesn't exist yet)
+  • Returns success to customer
         │
         ▼
-Shopify Flow triggers on customer creation
+Shopify Flow triggers on customer creation  PHASE 2 — FLOW
   Condition: tags contains "warranty-registered"
   ├─ TRUE  → discountCodeBasicCreate (WARRANTY15)
   │          → tagsAdd: voucher-ready:WARRANTY15:WARRANTY15-{id}
@@ -20,7 +23,7 @@ Shopify Flow triggers on customer creation
              → tagsAdd: voucher-ready:WELCOME10:WELCOME10-{id}
         │
         ▼
-Shopify fires CUSTOMERS_UPDATE webhook
+Shopify fires CUSTOMERS_UPDATE webhook      PHASE 3 — DELIVERY
         │
         ▼
 webhooks.customers.update.tsx
@@ -28,8 +31,17 @@ webhooks.customers.update.tsx
   • Queries DB for latest registration (phone, product name)
   • Calls sendWarrantySms() via Infobip
   • Writes result to SMSLog
+  • ✅ Creates CustomerReward (code now exists)
   • Removes voucher-ready tag (prevents re-fire)
 ```
+
+### When each record is created
+
+| Record              | Created in         | Reason                                      |
+|---------------------|--------------------|---------------------------------------------|
+| `WarrantyRegistration` | `/api/warranty`  | Immediately on form submit                  |
+| `CustomerReward`    | webhook            | Only after Flow generates the discount code |
+| `SMSLog`            | webhook            | After every SMS attempt (success or failure)|
 
 ---
 

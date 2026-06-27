@@ -1,4 +1,4 @@
-name: Close Waiting for Response Issues
+﻿name: Close Waiting for Response Issues
 on:
   schedule:
     - cron: "30 1 * * *"

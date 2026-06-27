@@ -1,4 +1,4 @@
-name: Remove Waiting Labels
+﻿name: Remove Waiting Labels
 on:
   issue_comment:
     types: [created]

@@ -1,3 +1,5 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
 client_id = "41d1d7fae24939000bdbd2935ae8857f"
 name = "Warranty Registration"
 application_url = "https://geepas-warranty.vercel.app"
@@ -10,6 +12,11 @@ automatically_update_urls_on_dev = true
 api_version = "2026-07"
 
   [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/update"
+  topics = [ "customers/update" ]
+  include_fields = [ "tags", "phone", "first_name", "id" ]
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
@@ -17,12 +24,8 @@ api_version = "2026-07"
   uri = "/webhooks/app/uninstalled"
   topics = [ "app/uninstalled" ]
 
-  [[webhooks.subscriptions]]
-  topics = [ "customers/update" ]
-  uri = "/webhooks/customers/update"
-  include_fields = [ "tags", "phone", "first_name", "id" ]
-
 [access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"
 
 [auth]

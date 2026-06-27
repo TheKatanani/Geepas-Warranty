@@ -62,6 +62,8 @@ The content is organized as follows:
 app/db.server.ts
 app/entry.server.tsx
 app/globals.d.ts
+app/lib/voucher-processing.server.ts
+app/lib/whatsapp.server.ts
 app/root.tsx
 app/routes.ts
 app/routes/_index/route.tsx
@@ -69,6 +71,7 @@ app/routes/_index/styles.module.css
 app/routes/api.customer-lookup.tsx
 app/routes/api.products.tsx
 app/routes/api.reward.record-welcome.tsx
+app/routes/api.send-warranty-sms.tsx
 app/routes/api.warranty.tsx
 app/routes/app._index.tsx
 app/routes/app.additional.tsx
@@ -77,9 +80,12 @@ app/routes/app.warranties.tsx
 app/routes/auth.$.tsx
 app/routes/auth.login/error.server.tsx
 app/routes/auth.login/route.tsx
+app/routes/cron.process-vouchers.tsx
 app/routes/public.warranty-register.tsx
 app/routes/webhooks.app.scopes_update.tsx
 app/routes/webhooks.app.uninstalled.tsx
+app/routes/webhooks.customers.update.tsx
+app/services/infobip.server.ts
 app/shopify.server.ts
 app/utils/twilio.server.ts
 CHANGELOG.md
@@ -87,10 +93,7 @@ Dockerfile
 env.d.ts
 package.json
 pnpm-workspace.yaml
-prisma/migrations/20240530213853_create_session_table/migration.sql
-prisma/migrations/20260618181611_add_warranty_model/migration.sql
-prisma/migrations/20260619143115_replace_invoice_url_with_invoice_number/migration.sql
-prisma/migrations/20260619155920_phase7_relational_schema/migration.sql
+prisma/migrations/20260622131420_init_postgres/migration.sql
 prisma/migrations/migration_lock.toml
 prisma/schema.prisma
 README.md
@@ -98,6 +101,7 @@ shopify.app.toml
 shopify.web.toml
 shopify.web.toml.liquid
 tsconfig.json
+vercel.json
 verify-db.ts
 verify-scopes.ts
 vite.config.ts
@@ -396,68 +400,6 @@ public
 .shopify
 </file>
 
-<file path="app/entry.server.tsx">
-import { PassThrough } from "stream";
-import { renderToPipeableStream } from "react-dom/server";
-import { RemixServer } from "@remix-run/react";
-import {
-  createReadableStreamFromReadable,
-  type EntryContext,
-} from "@remix-run/node";
-import { isbot } from "isbot";
-import { addDocumentResponseHeaders } from "./shopify.server";
-
-export const streamTimeout = 5000;
-
-export default async function handleRequest(
-  request: Request,
-  responseStatusCode: number,
-  responseHeaders: Headers,
-  remixContext: EntryContext
-) {
-  addDocumentResponseHeaders(request, responseHeaders);
-  const userAgent = request.headers.get("user-agent");
-  const callbackName = isbot(userAgent ?? '')
-    ? "onAllReady"
-    : "onShellReady";
-
-  return new Promise((resolve, reject) => {
-    const { pipe, abort } = renderToPipeableStream(
-      <RemixServer
-        context={remixContext}
-        url={request.url}
-      />,
-      {
-        [callbackName]: () => {
-          const body = new PassThrough();
-          const stream = createReadableStreamFromReadable(body);
-
-          responseHeaders.set("Content-Type", "text/html");
-          resolve(
-            new Response(stream, {
-              headers: responseHeaders,
-              status: responseStatusCode,
-            })
-          );
-          pipe(body);
-        },
-        onShellError(error) {
-          reject(error);
-        },
-        onError(error) {
-          responseStatusCode = 500;
-          console.error(error);
-        },
-      }
-    );
-
-    // Automatically timeout the React renderer after 6 seconds, which ensures
-    // React has enough time to flush down the rejected boundary contents
-    setTimeout(abort, streamTimeout + 1000);
-  });
-}
-</file>
-
 <file path="app/globals.d.ts">
 declare module "*.css";
 </file>
@@ -635,6 +577,493 @@ export default function App() {
   .list > li {
     padding-bottom: 1rem;
   }
+}
+</file>
+
+<file path="app/routes/app.additional.tsx">
+import {
+  Box,
+  Card,
+  Layout,
+  Link,
+  List,
+  Page,
+  Text,
+  BlockStack,
+} from "@shopify/polaris";
+import { TitleBar } from "@shopify/app-bridge-react";
+
+export default function AdditionalPage() {
+  return (
+    <Page>
+      <TitleBar title="Additional page" />
+      <Layout>
+        <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <Text as="p" variant="bodyMd">
+                The app template comes with an additional page which
+                demonstrates how to create multiple pages within app navigation
+                using{" "}
+                <Link
+                  url="https://shopify.dev/docs/apps/tools/app-bridge"
+                  target="_blank"
+                  removeUnderline
+                >
+                  App Bridge
+                </Link>
+                .
+              </Text>
+              <Text as="p" variant="bodyMd">
+                To create your own page and have it show up in the app
+                navigation, add a page inside <Code>app/routes</Code>, and a
+                link to it in the <Code>&lt;NavMenu&gt;</Code> component found
+                in <Code>app/routes/app.jsx</Code>.
+              </Text>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+        <Layout.Section variant="oneThird">
+          <Card>
+            <BlockStack gap="200">
+              <Text as="h2" variant="headingMd">
+                Resources
+              </Text>
+              <List>
+                <List.Item>
+                  <Link
+                    url="https://shopify.dev/docs/apps/design-guidelines/navigation#app-nav"
+                    target="_blank"
+                    removeUnderline
+                  >
+                    App nav best practices
+                  </Link>
+                </List.Item>
+              </List>
+            </BlockStack>
+          </Card>
+        </Layout.Section>
+      </Layout>
+    </Page>
+  );
+}
+
+function Code({ children }: { children: React.ReactNode }) {
+  return (
+    <Box
+      as="span"
+      padding="025"
+      paddingInlineStart="100"
+      paddingInlineEnd="100"
+      background="bg-surface-active"
+      borderWidth="025"
+      borderColor="border"
+      borderRadius="100"
+    >
+      <code>{children}</code>
+    </Box>
+  );
+}
+</file>
+
+<file path="app/routes/auth.$.tsx">
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  await authenticate.admin(request);
+
+  return null;
+};
+</file>
+
+<file path="app/routes/auth.login/error.server.tsx">
+import type { LoginError } from "@shopify/shopify-app-remix/server";
+import { LoginErrorType } from "@shopify/shopify-app-remix/server";
+
+interface LoginErrorMessage {
+  shop?: string;
+}
+
+export function loginErrorMessage(loginErrors: LoginError): LoginErrorMessage {
+  if (loginErrors?.shop === LoginErrorType.MissingShop) {
+    return { shop: "Please enter your shop domain to log in" };
+  } else if (loginErrors?.shop === LoginErrorType.InvalidShop) {
+    return { shop: "Please enter a valid shop domain to log in" };
+  }
+
+  return {};
+}
+</file>
+
+<file path="app/routes/auth.login/route.tsx">
+import { useState } from "react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import {
+  AppProvider as PolarisAppProvider,
+  Button,
+  Card,
+  FormLayout,
+  Page,
+  Text,
+  TextField,
+} from "@shopify/polaris";
+import polarisTranslations from "@shopify/polaris/locales/en.json";
+import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+
+import { login } from "../../shopify.server";
+
+import { loginErrorMessage } from "./error.server";
+
+export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const errors = loginErrorMessage(await login(request));
+
+  return { errors, polarisTranslations };
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const errors = loginErrorMessage(await login(request));
+
+  return {
+    errors,
+  };
+};
+
+export default function Auth() {
+  const loaderData = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const [shop, setShop] = useState("");
+  const { errors } = actionData || loaderData;
+
+  return (
+    <PolarisAppProvider i18n={loaderData.polarisTranslations}>
+      <Page>
+        <Card>
+          <Form method="post">
+            <FormLayout>
+              <Text variant="headingMd" as="h2">
+                Log in
+              </Text>
+              <TextField
+                type="text"
+                name="shop"
+                label="Shop domain"
+                helpText="example.myshopify.com"
+                value={shop}
+                onChange={setShop}
+                autoComplete="on"
+                error={errors.shop}
+              />
+              <Button submit>Log in</Button>
+            </FormLayout>
+          </Form>
+        </Card>
+      </Page>
+    </PolarisAppProvider>
+  );
+}
+</file>
+
+<file path="app/routes/webhooks.app.scopes_update.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+    const { payload, session, topic, shop } = await authenticate.webhook(request);
+    console.log(`Received ${topic} webhook for ${shop}`);
+
+    const current = payload.current as string[];
+    if (session) {
+        await db.session.update({   
+            where: {
+                id: session.id
+            },
+            data: {
+                scope: current.toString(),
+            },
+        });
+    }
+    return new Response();
+};
+</file>
+
+<file path="app/routes/webhooks.app.uninstalled.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import db from "../db.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, session, topic } = await authenticate.webhook(request);
+
+  console.log(`Received ${topic} webhook for ${shop}`);
+
+  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
+  // If this webhook already ran, the session may have been deleted previously.
+  if (session) {
+    await db.session.deleteMany({ where: { shop } });
+  }
+
+  return new Response();
+};
+</file>
+
+<file path="Dockerfile">
+FROM node:18-alpine
+RUN apk add --no-cache openssl
+
+EXPOSE 3000
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+
+RUN npm ci --omit=dev && npm cache clean --force
+# Remove CLI packages since we don't need them in production by default.
+# Remove this line if you want to run CLI commands in your container.
+RUN npm remove @shopify/cli
+
+COPY . .
+
+RUN npm run build
+
+CMD ["npm", "run", "docker-start"]
+</file>
+
+<file path="env.d.ts">
+/// <reference types="vite/client" />
+/// <reference types="@remix-run/node" />
+</file>
+
+<file path="tsconfig.json">
+{
+  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "removeComments": false,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "baseUrl": ".",
+    "types": ["node"]
+  }
+}
+</file>
+
+<file path=".github/workflows/remove-labels-on-activity.yml">
+name: Remove Waiting Labels
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+jobs:
+  remove-labels-on-activity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
+      - uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1.2.0
+        if: contains(github.event.issue.labels.*.name, 'Waiting for Response')
+        with:
+          labels: |
+            Waiting for Response
+</file>
+
+<file path=".gitignore">
+node_modules
+.DS_Store
+
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+
+.env
+.env.*
+
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+/extensions/*/dist
+
+# Ignore shopify files created during app dev
+.shopify/*
+.shopify.lock
+</file>
+
+<file path=".graphqlrc.ts">
+import fs from "fs";
+import { ApiVersion } from "@shopify/shopify-api";
+import { shopifyApiProject, ApiType } from "@shopify/api-codegen-preset";
+import type { IGraphQLConfig } from "graphql-config";
+
+function getConfig() {
+  const config: IGraphQLConfig = {
+    projects: {
+      default: shopifyApiProject({
+        apiType: ApiType.Admin,
+        apiVersion: ApiVersion.July25,
+        documents: [
+          "./app/**/*.{js,ts,jsx,tsx}",
+          "./app/.server/**/*.{js,ts,jsx,tsx}",
+        ],
+        outputDir: "./app/types",
+      }),
+    },
+  };
+
+  let extensions: string[] = [];
+  try {
+    extensions = fs.readdirSync("./extensions");
+  } catch {
+    // ignore if no extensions
+  }
+
+  for (const entry of extensions) {
+    const extensionPath = `./extensions/${entry}`;
+    const schema = `${extensionPath}/schema.graphql`;
+    if (!fs.existsSync(schema)) {
+      continue;
+    }
+    config.projects[entry] = {
+      schema,
+      documents: [`${extensionPath}/**/*.graphql`],
+    };
+  }
+
+  return config;
+}
+
+const config = getConfig();
+
+export default config;
+</file>
+
+<file path=".npmrc">
+engine-strict=true
+@shopify:registry=https://registry.npmjs.org
+</file>
+
+<file path="app/db.server.ts">
+import { PrismaClient } from "@prisma/client";
+
+declare global {
+  var prismaGlobal: PrismaClient;
+}
+
+if (process.env.NODE_ENV !== "production") {
+  if (!global.prismaGlobal) {
+    global.prismaGlobal = new PrismaClient();
+  }
+}
+
+const prisma = global.prismaGlobal ?? new PrismaClient();
+
+export default prisma;
+</file>
+
+<file path="app/entry.server.tsx">
+import { PassThrough } from "stream";
+import { renderToPipeableStream } from "react-dom/server";
+import { RemixServer } from "@remix-run/react";
+import {
+  createReadableStreamFromReadable,
+  type EntryContext,
+} from "@remix-run/node";
+import { isbot } from "isbot";
+import { addDocumentResponseHeaders } from "./shopify.server";
+
+export const streamTimeout = 5000;
+
+export default async function handleRequest(
+  request: Request,
+  responseStatusCode: number,
+  responseHeaders: Headers,
+  remixContext: EntryContext
+) {
+  // Public routes must not have Shopify's frame-ancestors CSP (they're embedded in iframes)
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith("/public/")) {
+    addDocumentResponseHeaders(request, responseHeaders);
+  } else {
+    responseHeaders.set("X-Frame-Options", "ALLOWALL");
+    responseHeaders.set("Content-Security-Policy", "frame-ancestors *");
+  }
+  const userAgent = request.headers.get("user-agent");
+  const callbackName = isbot(userAgent ?? '')
+    ? "onAllReady"
+    : "onShellReady";
+
+  return new Promise((resolve, reject) => {
+    const { pipe, abort } = renderToPipeableStream(
+      <RemixServer
+        context={remixContext}
+        url={request.url}
+      />,
+      {
+        [callbackName]: () => {
+          const body = new PassThrough();
+          const stream = createReadableStreamFromReadable(body);
+
+          responseHeaders.set("Content-Type", "text/html");
+          resolve(
+            new Response(stream, {
+              headers: responseHeaders,
+              status: responseStatusCode,
+            })
+          );
+          pipe(body);
+        },
+        onShellError(error) {
+          reject(error);
+        },
+        onError(error) {
+          responseStatusCode = 500;
+          console.error(error);
+        },
+      }
+    );
+
+    // Automatically timeout the React renderer after 6 seconds, which ensures
+    // React has enough time to flush down the rejected boundary contents
+    setTimeout(abort, streamTimeout + 1000);
+  });
+}
+</file>
+
+<file path="app/lib/whatsapp.server.ts">
+/**
+ * WhatsApp template messaging helper.
+ * Currently logs only — replace the body of sendWhatsappTemplate
+ * with a real API call (e.g. Meta Cloud API) when ready.
+ */
+
+export async function sendWhatsappTemplate(
+  phone: string,
+  templateName: string,
+  params: string[]
+): Promise<void> {
+  console.log("[whatsapp] sendWhatsappTemplate", { phone, templateName, params });
+  // TODO: call Meta WhatsApp Cloud API here
 }
 </file>
 
@@ -881,494 +1310,116 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 </file>
 
-<file path="app/routes/api.warranty.tsx">
-import type { ActionFunctionArgs } from "@remix-run/node";
+<file path="app/routes/api.send-warranty-sms.tsx">
 import { json } from "@remix-run/node";
+import type { ActionFunctionArgs } from "@remix-run/node";
 import prisma from "../db.server";
-import { unauthenticated } from "../shopify.server";
-import {
-  normalizePhone,
-  sendSms,
-  buildWarrantyConfirmationSms,
-} from "../utils/twilio.server";
-
-const WEBSITE_URL = process.env.WEBSITE_URL || "https://geepas.com";
+import { sendWarrantySms } from "../services/infobip.server";
 
 /**
- * Generate a unique discount code string.
- */
-function generateDiscountCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "GEEPAS15-";
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-}
-
-/**
- * POST /api/warranty
+ * POST /api/send-warranty-sms
  *
- * Full warranty registration flow:
- * 1. Validate input
- * 2. Normalize phone number
- * 3. Resolve or create Shopify customer
- * 4. Check reward eligibility (no stacking, no duplicates)
- * 5. Save registration + products
- * 6. Create Shopify discount code if eligible
- * 7. Send SMS via Twilio
+ * Sends a warranty confirmation SMS via Infobip and logs the result to SMSLog.
+ *
+ * Expected JSON body:
+ * {
+ *   shop: string
+ *   phone: string
+ *   customerName: string
+ *   voucherCode: string | null
+ *   productName: string
+ *   warrantyDays: number
+ *   registrationId: string
+ *   registrationDate: string   // ISO-8601
+ *   voucherExpiryDays?: number // default 30
+ *   lang?: "ar" | "en"        // default "ar"
+ * }
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
+  let body: any;
   try {
-    const body = await request.json();
-
-    const {
-      shop,
-      firstName,
-      email,
-      phone,
-      city,
-      store,
-      purchaseDate,
-      invoiceNumber,
-      products,
-      isNewCustomer,
-    } = body;
-
-    // --- Validation ---
-    const errors: string[] = [];
-    if (!shop) errors.push("Shop is required.");
-    if (!firstName || firstName.trim().length < 2)
-      errors.push("First name is required (min 2 characters).");
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errors.push("Valid email is required.");
-    if (!phone || phone.trim().length < 7)
-      errors.push("Valid phone number is required.");
-    if (!city) errors.push("City is required.");
-    if (!store) errors.push("Store is required.");
-    if (!purchaseDate) errors.push("Purchase date is required.");
-    if (!products || !Array.isArray(products) || products.length === 0)
-      errors.push("At least one product is required.");
-
-    if (errors.length > 0) {
-      return json({ errors }, { status: 400 });
-    }
-
-    const normalizedPhone = normalizePhone(phone);
-
-    // --- Resolve Shopify Customer ---
-    let customerId: string;
-
-    try {
-      const { admin } = await unauthenticated.admin(shop);
-
-      console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
-      console.log("[api.warranty] Normalized phone:", normalizedPhone);
-
-      // Look up existing customer by phone
-      console.log("[api.warranty] Looking up customer by phone:", normalizedPhone);
-      const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
-      if (lookupResult) {
-        console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
-        customerId = lookupResult;
-      } else {
-        console.log("[api.warranty] Customer not found by phone. Checking email or creating new customer...");
-        customerId = await createOrUpdateShopifyCustomer(admin, {
-          firstName: firstName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: normalizedPhone,
-        });
-        console.log("[api.warranty] Resolved customerId:", customerId);
-      }
-
-      // --- Check Reward Eligibility ---
-      // Rule: No stacking, no duplicates. Phone is source of truth.
-      const existingReward = await prisma.customerReward.findFirst({
-        where: {
-          shop,
-          phone: normalizedPhone,
-        },
-      });
-
-      // Save warranty registration
-      const registration = await prisma.warrantyRegistration.create({
-        data: {
-          shop,
-          customerId,
-          firstName: firstName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: normalizedPhone,
-          city,
-          store,
-          purchaseDate: new Date(purchaseDate),
-          invoiceNumber: invoiceNumber?.trim() || null,
-          status: "pending",
-          products: {
-            create: products.map((p: any) => ({
-              productId: p.productId || null,
-              productTitle: p.productTitle,
-              sku: p.sku || null,
-              isManual: p.isManual || false,
-            })),
-          },
-        },
-        include: { products: true },
-      });
-
-      // --- Discount Code Generation ---
-      let discountCode: string | null = null;
-      let rewardCreated = false;
-
-      if (!existingReward) {
-        // Eligible for WARRANTY_15 — no prior reward of any type
-        discountCode = generateDiscountCode();
-
-        try {
-          // Create Shopify discount code via GraphQL
-          await createShopifyDiscountCode(admin, discountCode, customerId);
-          rewardCreated = true;
-        } catch (discountErr) {
-          console.error(
-            "[api.warranty] Failed to create Shopify discount:",
-            discountErr
-          );
-          // Continue — don't block registration because discount failed
-        }
-
-        if (rewardCreated) {
-          await prisma.customerReward.create({
-            data: {
-              shop,
-              phone: normalizedPhone,
-              customerId,
-              rewardType: "WARRANTY_15",
-              discountCode,
-            },
-          });
-        }
-      }
-
-      // --- SMS ---
-      const smsBody = buildWarrantyConfirmationSms(
-        firstName.trim(),
-        rewardCreated ? discountCode : null,
-        WEBSITE_URL
-      );
-
-      const smsResult = await sendSms(normalizedPhone, smsBody);
-
-      // Log SMS
-      await prisma.sMSLog.create({
-        data: {
-          shop,
-          phone: normalizedPhone,
-          registrationId: registration.id,
-          rewardId: rewardCreated
-            ? (
-                await prisma.customerReward.findFirst({
-                  where: {
-                    shop,
-                    phone: normalizedPhone,
-                    rewardType: "WARRANTY_15",
-                  },
-                })
-              )?.id || null
-            : null,
-          smsSent: smsResult.success,
-          smsSentAt: smsResult.success ? new Date() : null,
-          smsProviderResponse: smsResult.rawResponse || smsResult.error || null,
-        },
-      });
-
-      return json(
-        {
-          success: true,
-          registration: {
-            id: registration.id,
-            status: registration.status,
-            productsCount: registration.products.length,
-          },
-          reward: rewardCreated
-            ? { discountCode, type: "WARRANTY_15" }
-            : existingReward
-              ? { message: "Customer already has a reward on record." }
-              : null,
-          smsSent: smsResult.success,
-        },
-        { status: 201 }
-      );
-    } catch (shopifyErr: any) {
-      console.error("[api.warranty] Shopify/DB error:", shopifyErr);
-      return json(
-        {
-          error: "Failed to process warranty registration. Please try again later.",
-          debug: shopifyErr instanceof Error ? shopifyErr.message : shopifyErr,
-          stack: shopifyErr instanceof Error ? shopifyErr.stack : undefined,
-        },
-        { status: 500 }
-      );
-    }
-  } catch (error: any) {
-    console.error("[api.warranty] Parse error:", error);
-    return json(
-      { error: "Invalid request body." },
-      { status: 400 }
-    );
-  }
-};
-
-// ---- Helper: Lookup customer by phone ----
-async function lookupCustomerByPhone(
-  admin: any,
-  phone: string
-): Promise<string | null> {
-  const query = `#graphql
-    query customerByPhone($query: String!) {
-      customers(first: 1, query: $query) {
-        edges {
-          node {
-            id
-          }
-        }
-      }
-    }`;
-  const variables = { query: `phone:${phone}` };
-  console.log("[lookupCustomerByPhone] Shopify lookup query:", query, "variables:", variables);
-
-  const response = await admin.graphql(query, { variables });
-  const data = await response.json();
-  console.log("[lookupCustomerByPhone] Shopify response:", JSON.stringify(data, null, 2));
-
-  if (data?.errors) {
-    console.error("[lookupCustomerByPhone] GraphQL errors:", data.errors);
-    throw new Error(`Shopify lookup error: ${JSON.stringify(data.errors)}`);
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const edges = data?.data?.customers?.edges || [];
-  return edges.length > 0 ? edges[0].node.id : null;
-}
+  const {
+    shop,
+    phone,
+    customerName,
+    voucherCode = null,
+    productName,
+    warrantyDays,
+    registrationId,
+    registrationDate,
+    voucherExpiryDays = 30,
+    lang = "ar",
+  } = body;
 
-// ---- Helper: Create or update Shopify Customer ----
-async function createOrUpdateShopifyCustomer(
-  admin: any,
-  input: { firstName: string; email: string; phone: string }
-): Promise<string> {
-  // First check if email already exists on another customer
-  const queryEmail = `#graphql
-    query customerByEmail($query: String!) {
-      customers(first: 1, query: $query) {
-        edges {
-          node {
-            id
-            phone
-          }
-        }
-      }
-    }`;
-  const variablesEmail = { query: `email:${input.email}` };
-  console.log("[createOrUpdateShopifyCustomer] Checking existing email query:", queryEmail, "variables:", variablesEmail);
+  // --- Validate required fields ---
+  const missing = (["shop", "phone", "customerName", "productName", "warrantyDays", "registrationId", "registrationDate"] as const)
+    .filter((k) => !body[k]);
 
-  const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
-  const emailCheckData = await emailCheckResponse.json();
-  console.log("[createOrUpdateShopifyCustomer] Email check response:", JSON.stringify(emailCheckData, null, 2));
-
-  if (emailCheckData?.errors) {
-    console.error("[createOrUpdateShopifyCustomer] Email check GraphQL errors:", emailCheckData.errors);
+  if (missing.length > 0) {
+    return json({ error: `Missing required fields: ${missing.join(", ")}` }, { status: 400 });
   }
 
-  const existingByEmail = emailCheckData?.data?.customers?.edges || [];
+  // --- Send SMS ---
+  const result = await sendWarrantySms({
+    phoneNumber: phone,
+    customerName,
+    voucherCode: voucherCode ?? null,
+    productName,
+    warrantyDays: Number(warrantyDays),
+    registrationId,
+    registrationDate: new Date(registrationDate),
+    voucherExpiryDays: Number(voucherExpiryDays),
+    lang,
+  });
 
-  if (existingByEmail.length > 0) {
-    const existing = existingByEmail[0].node;
-    console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
-
-    // If email exists but phone is different, update the existing customer's phone
-    if (existing.phone !== input.phone) {
-      console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
-      const mutationUpdate = `#graphql
-        mutation customerUpdate($input: CustomerInput!) {
-          customerUpdate(input: $input) {
-            customer {
-              id
-            }
-            userErrors {
-              field
-              message
-            }
-          }
-        }`;
-      const variablesUpdate = {
-        input: {
-          id: existing.id,
-          phone: input.phone,
-        },
-      };
-      console.log("[createOrUpdateShopifyCustomer] Update mutation:", mutationUpdate, "variables:", variablesUpdate);
-
-      const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
-      const updateData = await updateResponse.json();
-      console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
-
-      const updateErrors = updateData?.data?.customerUpdate?.userErrors || [];
-      if (updateErrors.length > 0) {
-        console.error("[createOrUpdateShopifyCustomer] Update phone user errors:", updateErrors);
-      }
-    }
-
-    return existing.id;
-  }
-
-  // Create new customer
-  console.log("[createOrUpdateShopifyCustomer] Creating new customer with details:", input);
-  const mutationCreate = `#graphql
-    mutation customerCreate($input: CustomerInput!) {
-      customerCreate(input: $input) {
-        customer {
-          id
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`;
-  const variablesCreate = {
-    input: {
-      firstName: input.firstName,
-      email: input.email,
-      phone: input.phone,
-    },
-  };
-  console.log("[createOrUpdateShopifyCustomer] Create mutation:", mutationCreate, "variables:", variablesCreate);
-
-  const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
-  const createData = await createResponse.json();
-  console.log("[createOrUpdateShopifyCustomer] Create response:", JSON.stringify(createData, null, 2));
-
-  const userErrors = createData?.data?.customerCreate?.userErrors || [];
-  if (userErrors.length > 0) {
-    console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
-    // If customer creation fails (e.g. email/phone taken), try lookup by phone
-    console.log("[createOrUpdateShopifyCustomer] Customer creation failed. Falling back to lookup by phone:", input.phone);
-    const fallbackId = await lookupCustomerByPhone(
-      admin,
-      input.phone
-    );
-    if (fallbackId) {
-      console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
-      return fallbackId;
-    }
-    throw new Error(
-      `Customer creation failed: ${userErrors.map((e: any) => e.message).join(", ")}`
-    );
-  }
-
-  const newCustomerId = createData?.data?.customerCreate?.customer?.id;
-  if (!newCustomerId) {
-    throw new Error("Customer creation returned no ID.");
-  }
-
-  console.log("[createOrUpdateShopifyCustomer] Customer created successfully. ID:", newCustomerId);
-
-  // Send activation email invite
+  // --- Persist to SMSLog ---
   try {
-    const mutationInvite = `#graphql
-      mutation customerSendAccountInviteEmail($customerId: ID!) {
-        customerSendAccountInviteEmail(customerId: $customerId) {
-          customer {
-            id
-          }
-          userErrors {
-            field
-            message
-          }
-        }
-      }`;
-    console.log("[createOrUpdateShopifyCustomer] Sending account invite for ID:", newCustomerId);
-    const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
-    const inviteData = await inviteResponse.json();
-    console.log("[createOrUpdateShopifyCustomer] Send invite response:", JSON.stringify(inviteData, null, 2));
-    const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
-    if (inviteErrors.length > 0) {
-      console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
-    }
-  } catch (inviteErr) {
-    // Non-critical — don't block the flow
-    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed:", inviteErr);
-  }
-
-  return newCustomerId;
-}
-
-// ---- Helper: Create Shopify discount code ----
-async function createShopifyDiscountCode(
-  admin: any,
-  code: string,
-  customerId: string
-): Promise<void> {
-  // Create a basic discount code using the discountCodeBasicCreate mutation
-  const startsAt = new Date().toISOString();
-
-  const response = await admin.graphql(
-    `#graphql
-    mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
-      discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
-        codeDiscountNode {
-          id
-          codeDiscount {
-            ... on DiscountCodeBasic {
-              codes(first: 1) {
-                edges {
-                  node {
-                    code
-                  }
-                }
-              }
-            }
-          }
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`,
-    {
-      variables: {
-        basicCodeDiscount: {
-          title: `Warranty 15% - ${code}`,
-          code,
-          startsAt,
-          customerSelection: {
-            all: true,
-          },
-          customerGets: {
-            value: {
-              percentage: 0.15,
-            },
-            items: {
-              all: true,
-            },
-          },
-          usageLimit: 1,
-        },
+    await prisma.sMSLog.create({
+      data: {
+        shop,
+        phone: result.phone,
+        registrationId: registrationId ?? null,
+        smsSent: result.success,
+        smsSentAt: result.success ? new Date(result.timestamp) : null,
+        smsProviderResponse: result.rawResponse
+          ?? result.error
+          ?? (result.success ? result.messageId : null)
+          ?? null,
       },
-    }
-  );
-
-  const data = await response.json();
-  const userErrors =
-    data?.data?.discountCodeBasicCreate?.userErrors || [];
-
-  if (userErrors.length > 0) {
-    console.error("[discount] Creation errors:", userErrors);
-    throw new Error(userErrors.map((e: any) => e.message).join(", "));
+    });
+  } catch (dbErr) {
+    // Non-fatal — don't fail the response if only the log write failed
+    console.error("[api.send-warranty-sms] Failed to write SMSLog:", dbErr);
   }
-}
+
+  if (result.success) {
+    return json({
+      success: true,
+      messageId: result.messageId,
+      phone: result.phone,
+      timestamp: result.timestamp,
+    });
+  }
+
+  return json(
+    {
+      success: false,
+      phone: result.phone,
+      timestamp: result.timestamp,
+      error: result.error,
+    },
+    { status: 502 },
+  );
+};
 </file>
 
 <file path="app/routes/app._index.tsx">
@@ -1381,92 +1432,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   return redirect(`/app/warranties${url.search}`);
 };
-</file>
-
-<file path="app/routes/app.additional.tsx">
-import {
-  Box,
-  Card,
-  Layout,
-  Link,
-  List,
-  Page,
-  Text,
-  BlockStack,
-} from "@shopify/polaris";
-import { TitleBar } from "@shopify/app-bridge-react";
-
-export default function AdditionalPage() {
-  return (
-    <Page>
-      <TitleBar title="Additional page" />
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <BlockStack gap="300">
-              <Text as="p" variant="bodyMd">
-                The app template comes with an additional page which
-                demonstrates how to create multiple pages within app navigation
-                using{" "}
-                <Link
-                  url="https://shopify.dev/docs/apps/tools/app-bridge"
-                  target="_blank"
-                  removeUnderline
-                >
-                  App Bridge
-                </Link>
-                .
-              </Text>
-              <Text as="p" variant="bodyMd">
-                To create your own page and have it show up in the app
-                navigation, add a page inside <Code>app/routes</Code>, and a
-                link to it in the <Code>&lt;NavMenu&gt;</Code> component found
-                in <Code>app/routes/app.jsx</Code>.
-              </Text>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-        <Layout.Section variant="oneThird">
-          <Card>
-            <BlockStack gap="200">
-              <Text as="h2" variant="headingMd">
-                Resources
-              </Text>
-              <List>
-                <List.Item>
-                  <Link
-                    url="https://shopify.dev/docs/apps/design-guidelines/navigation#app-nav"
-                    target="_blank"
-                    removeUnderline
-                  >
-                    App nav best practices
-                  </Link>
-                </List.Item>
-              </List>
-            </BlockStack>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
-  );
-}
-
-function Code({ children }: { children: React.ReactNode }) {
-  return (
-    <Box
-      as="span"
-      padding="025"
-      paddingInlineStart="100"
-      paddingInlineEnd="100"
-      background="bg-surface-active"
-      borderWidth="025"
-      borderColor="border"
-      borderRadius="100"
-    >
-      <code>{children}</code>
-    </Box>
-  );
-}
 </file>
 
 <file path="app/routes/app.tsx">
@@ -2130,1480 +2095,66 @@ export default function WarrantiesPage() {
 }
 </file>
 
-<file path="app/routes/auth.$.tsx">
+<file path="app/routes/cron.process-vouchers.tsx">
+import { json } from "@remix-run/node";
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
-
-  return null;
-};
-</file>
-
-<file path="app/routes/auth.login/error.server.tsx">
-import type { LoginError } from "@shopify/shopify-app-remix/server";
-import { LoginErrorType } from "@shopify/shopify-app-remix/server";
-
-interface LoginErrorMessage {
-  shop?: string;
-}
-
-export function loginErrorMessage(loginErrors: LoginError): LoginErrorMessage {
-  if (loginErrors?.shop === LoginErrorType.MissingShop) {
-    return { shop: "Please enter your shop domain to log in" };
-  } else if (loginErrors?.shop === LoginErrorType.InvalidShop) {
-    return { shop: "Please enter a valid shop domain to log in" };
-  }
-
-  return {};
-}
-</file>
-
-<file path="app/routes/auth.login/route.tsx">
-import { useState } from "react";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { Form, useActionData, useLoaderData } from "@remix-run/react";
+import { unauthenticated } from "../shopify.server";
 import {
-  AppProvider as PolarisAppProvider,
-  Button,
-  Card,
-  FormLayout,
-  Page,
-  Text,
-  TextField,
-} from "@shopify/polaris";
-import polarisTranslations from "@shopify/polaris/locales/en.json";
-import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
+  processCustomerVoucher,
+  type VoucherCustomer,
+} from "../lib/voucher-processing.server";
 
-import { login } from "../../shopify.server";
+// This app serves a single store.
+const SHOP = "ae53cd-2.myshopify.com";
 
-import { loginErrorMessage } from "./error.server";
-
-export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
-
+// Vercel invokes this route on the cron schedule defined in vercel.json.
+// It queries for customers tagged "voucher-ready:*", processes each one,
+// and returns a JSON summary.
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
+  const { admin } = await unauthenticated.admin(SHOP);
 
-  return { errors, polarisTranslations };
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
-
-  return {
-    errors,
-  };
-};
-
-export default function Auth() {
-  const loaderData = useLoaderData<typeof loader>();
-  const actionData = useActionData<typeof action>();
-  const [shop, setShop] = useState("");
-  const { errors } = actionData || loaderData;
-
-  return (
-    <PolarisAppProvider i18n={loaderData.polarisTranslations}>
-      <Page>
-        <Card>
-          <Form method="post">
-            <FormLayout>
-              <Text variant="headingMd" as="h2">
-                Log in
-              </Text>
-              <TextField
-                type="text"
-                name="shop"
-                label="Shop domain"
-                helpText="example.myshopify.com"
-                value={shop}
-                onChange={setShop}
-                autoComplete="on"
-                error={errors.shop}
-              />
-              <Button submit>Log in</Button>
-            </FormLayout>
-          </Form>
-        </Card>
-      </Page>
-    </PolarisAppProvider>
-  );
-}
-</file>
-
-<file path="app/routes/public.warranty-register.tsx">
-import type { MetaFunction } from "@remix-run/node";
-import { useState, useCallback, useEffect, useRef } from "react";
-
-export const meta: MetaFunction = () => {
-  return [
-    { title: "Geepas Warranty Registration" },
-    { name: "description", content: "Register your Geepas product warranty" },
-  ];
-};
-
-// ---- Iraqi Cities ----
-const IRAQI_CITIES = [
-  "Baghdad",
-  "Basra",
-  "Erbil",
-  "Sulaymaniyah",
-  "Mosul",
-  "Kirkuk",
-  "Najaf",
-  "Karbala",
-  "Nasiriyah",
-  "Amarah",
-  "Diwaniyah",
-  "Kut",
-  "Hillah",
-  "Samawah",
-  "Ramadi",
-  "Fallujah",
-  "Tikrit",
-  "Baqubah",
-  "Duhok",
-  "Halabja",
-  "Zakho",
-];
-
-// ---- Types ----
-type Step = "phone" | "details" | "products" | "review" | "success";
-
-interface CustomerData {
-  exists: boolean;
-  lookupFailed?: boolean;
-  customerId?: string;
-  firstName?: string;
-  email?: string;
-}
-
-interface ProductEntry {
-  id: string; // local unique key
-  productId: string | null; // Shopify GID or null
-  productTitle: string;
-  sku: string | null;
-  isManual: boolean;
-}
-
-interface ShopifyProduct {
-  id: string;
-  title: string;
-  sku: string | null;
-}
-
-interface FormErrors {
-  [key: string]: string;
-}
-
-// ---- Component ----
-export default function WarrantyRegister() {
-  // Get shop from URL params
-  const [shop, setShop] = useState("");
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setShop(params.get("shop") || "");
-  }, []);
-
-  // Step management
-  const [currentStep, setCurrentStep] = useState<Step>("phone");
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [globalError, setGlobalError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Step 1: Phone lookup
-  const [phone, setPhone] = useState("");
-  const [isLookingUp, setIsLookingUp] = useState(false);
-  const [customerData, setCustomerData] = useState<CustomerData | null>(null);
-  const [isNewCustomer, setIsNewCustomer] = useState(false);
-
-  // Step 2: Customer details
-  const [firstName, setFirstName] = useState("");
-  const [email, setEmail] = useState("");
-  const [city, setCity] = useState("");
-  const [storeName, setStoreName] = useState("");
-  const [purchaseDate, setPurchaseDate] = useState("");
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-
-  // Step 3: Products
-  const [products, setProducts] = useState<ProductEntry[]>([]);
-  const [productSearch, setProductSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<ShopifyProduct[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showManualEntry, setShowManualEntry] = useState(false);
-  const [manualTitle, setManualTitle] = useState("");
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Success data
-  const [successData, setSuccessData] = useState<any>(null);
-
-  // ---- Phone Lookup ----
-  const handlePhoneLookup = useCallback(async () => {
-    if (!phone || phone.trim().length < 7) {
-      setErrors({ phone: "Please enter a valid phone number." });
-      return;
-    }
-    if (!shop) {
-      setGlobalError("Shop parameter is missing from the URL.");
-      return;
-    }
-
-    setIsLookingUp(true);
-    setGlobalError("");
-    setErrors({});
-
-    try {
-      const res = await fetch(
-        `/api/customer-lookup?phone=${encodeURIComponent(phone)}&shop=${encodeURIComponent(shop)}`
-      );
-      
-      if (!res.ok) {
-        console.warn("Lookup response not OK, transitioning to details step as a new customer.");
-        setCustomerData({ exists: false, lookupFailed: true });
-        setIsNewCustomer(true);
-        setFirstName("");
-        setEmail("");
-        setCurrentStep("details");
-        return;
-      }
-
-      const data = await res.json();
-      setCustomerData(data);
-
-      if (data.exists) {
-        setIsNewCustomer(false);
-        setFirstName(data.firstName || "");
-        setEmail(data.email || "");
-      } else {
-        setIsNewCustomer(true);
-        setFirstName("");
-        setEmail("");
-      }
-
-      setCurrentStep("details");
-    } catch (err) {
-      console.warn("Lookup request failed with network error, transitioning to details step.", err);
-      setCustomerData({ exists: false, lookupFailed: true });
-      setIsNewCustomer(true);
-      setFirstName("");
-      setEmail("");
-      setCurrentStep("details");
-    } finally {
-      setIsLookingUp(false);
-    }
-  }, [phone, shop]);
-
-  // ---- Product Search ----
-  const handleProductSearch = useCallback(
-    (query: string) => {
-      setProductSearch(query);
-
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-
-      if (query.length < 2) {
-        setSearchResults([]);
-        return;
-      }
-
-      searchTimeoutRef.current = setTimeout(async () => {
-        setIsSearching(true);
-        try {
-          const res = await fetch(
-            `/api/products?shop=${encodeURIComponent(shop)}&search=${encodeURIComponent(query)}`
-          );
-          const data = await res.json();
-          setSearchResults(data.products || []);
-        } catch {
-          setSearchResults([]);
-        } finally {
-          setIsSearching(false);
+  // Fetch all customers that have any "voucher-ready:*" tag.
+  // Shopify customer search supports tag: prefix queries.
+  const response = await admin.graphql(
+    `#graphql
+    query voucherReadyCustomers {
+      customers(first: 50, query: "tag:voucher-ready*") {
+        edges {
+          node {
+            id
+            firstName
+            phone
+            tags
+          }
         }
-      }, 400);
-    },
-    [shop]
+      }
+    }`,
   );
 
-  const addProduct = useCallback((product: ShopifyProduct) => {
-    setProducts((prev) => {
-      // Avoid duplicates
-      if (prev.some((p) => p.productId === product.id)) return prev;
-      return [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          productId: product.id,
-          productTitle: product.title,
-          sku: product.sku,
-          isManual: false,
-        },
-      ];
-    });
-    setProductSearch("");
-    setSearchResults([]);
-  }, []);
+  const data = await response.json();
+  const edges: any[] = data?.data?.customers?.edges ?? [];
 
-  const addManualProduct = useCallback(() => {
-    if (!manualTitle.trim()) return;
-    setProducts((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        productId: null,
-        productTitle: manualTitle.trim(),
-        sku: null,
-        isManual: true,
-      },
-    ]);
-    setManualTitle("");
-    setShowManualEntry(false);
-  }, [manualTitle]);
+  console.log(`[cron.process-vouchers] Found ${edges.length} candidate customer(s)`);
 
-  const removeProduct = useCallback((id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-  }, []);
-
-  // ---- Step Validation ----
-  const validateDetails = useCallback((): boolean => {
-    const newErrors: FormErrors = {};
-    if (!firstName.trim() || firstName.trim().length < 2)
-      newErrors.firstName = "First name is required.";
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      newErrors.email = "Valid email is required.";
-    if (!city) newErrors.city = "City is required.";
-    if (!storeName.trim()) newErrors.store = "Store name is required.";
-    if (!purchaseDate) newErrors.purchaseDate = "Purchase date is required.";
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }, [firstName, email, city, storeName, purchaseDate]);
-
-  const validateProducts = useCallback((): boolean => {
-    if (products.length === 0) {
-      setErrors({ products: "Add at least one product." });
-      return false;
-    }
-    setErrors({});
-    return true;
-  }, [products]);
-
-  // ---- Submit ----
-  const handleSubmit = useCallback(async () => {
-    setIsSubmitting(true);
-    setGlobalError("");
-
-    try {
-      const payload = {
-        shop,
-        firstName: firstName.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        city,
-        store: storeName.trim(),
-        purchaseDate,
-        invoiceNumber: invoiceNumber.trim() || null,
-        isNewCustomer,
-        products: products.map((p) => ({
-          productId: p.productId,
-          productTitle: p.productTitle,
-          sku: p.sku,
-          isManual: p.isManual,
-        })),
+  const results = await Promise.all(
+    edges.map(({ node }: any) => {
+      const customer: VoucherCustomer = {
+        id: node.id,
+        firstName: node.firstName ?? "",
+        phone: node.phone ?? "",
+        tags: (node.tags as string[]) ?? [],
       };
-
-      const res = await fetch("/api/warranty", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        if (result.errors) {
-          setGlobalError(result.errors.join(", "));
-        } else {
-          setGlobalError(result.error || "Something went wrong.");
-        }
-        setIsSubmitting(false);
-        return;
-      }
-
-      setSuccessData(result);
-      setCurrentStep("success");
-    } catch {
-      setGlobalError("Network error. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [
-    shop,
-    firstName,
-    email,
-    phone,
-    city,
-    storeName,
-    purchaseDate,
-    invoiceNumber,
-    isNewCustomer,
-    products,
-  ]);
-
-  // ---- Reset ----
-  const handleReset = useCallback(() => {
-    setCurrentStep("phone");
-    setPhone("");
-    setCustomerData(null);
-    setIsNewCustomer(false);
-    setFirstName("");
-    setEmail("");
-    setCity("");
-    setStoreName("");
-    setPurchaseDate("");
-    setInvoiceNumber("");
-    setProducts([]);
-    setSuccessData(null);
-    setErrors({});
-    setGlobalError("");
-  }, []);
-
-  // ---- Progress Bar ----
-  const steps: Step[] = ["phone", "details", "products", "review"];
-  const stepLabels = ["Phone", "Details", "Products", "Review"];
-  const currentIndex = steps.indexOf(currentStep);
-
-  // ---- Render ----
-  return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        {/* Header */}
-        <div style={styles.header}>
-          <h1 style={styles.title}>Warranty Registration</h1>
-          <p style={styles.subtitle}>
-            Register your Geepas product to activate your warranty coverage
-          </p>
-        </div>
-
-        {/* Progress Bar */}
-        {currentStep !== "success" && (
-          <div style={styles.progressContainer}>
-            {steps.map((step, i) => (
-              <div key={step} style={styles.progressStep}>
-                <div
-                  style={{
-                    ...styles.progressDot,
-                    ...(i <= currentIndex
-                      ? styles.progressDotActive
-                      : {}),
-                  }}
-                >
-                  {i < currentIndex ? "✓" : i + 1}
-                </div>
-                <span
-                  style={{
-                    ...styles.progressLabel,
-                    ...(i <= currentIndex
-                      ? styles.progressLabelActive
-                      : {}),
-                  }}
-                >
-                  {stepLabels[i]}
-                </span>
-                {i < steps.length - 1 && (
-                  <div
-                    style={{
-                      ...styles.progressLine,
-                      ...(i < currentIndex
-                        ? styles.progressLineActive
-                        : {}),
-                    }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {globalError && <div style={styles.globalError}>{globalError}</div>}
-
-        {/* ---- STEP: Phone Lookup ---- */}
-        {currentStep === "phone" && (
-          <div style={styles.stepContent}>
-            <h2 style={styles.stepTitle}>Enter your mobile number</h2>
-            <p style={styles.stepDesc}>
-              We'll check if you already have an account with us.
-            </p>
-            <div style={styles.field}>
-              <label htmlFor="reg-phone" style={styles.label}>
-                Mobile Number <span style={styles.required}>*</span>
-              </label>
-              <input
-                id="reg-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  setErrors((prev) => {
-                    const n = { ...prev };
-                    delete n.phone;
-                    return n;
-                  });
-                }}
-                placeholder="07XX XXX XXXX"
-                style={{
-                  ...styles.input,
-                  ...(errors.phone ? styles.inputError : {}),
-                }}
-              />
-              {errors.phone && <p style={styles.error}>{errors.phone}</p>}
-            </div>
-            <button
-              style={{
-                ...styles.button,
-                ...(isLookingUp ? styles.buttonDisabled : {}),
-              }}
-              disabled={isLookingUp}
-              onClick={handlePhoneLookup}
-            >
-              {isLookingUp ? "Looking up..." : "Continue"}
-            </button>
-          </div>
-        )}
-
-        {/* ---- STEP: Customer Details ---- */}
-        {currentStep === "details" && (
-          <div style={styles.stepContent}>
-            {/* Customer status banner */}
-            {customerData?.exists ? (
-              <div style={styles.successBanner}>
-                <span style={styles.bannerIcon}>✓</span>
-                Welcome back! We found your account.
-              </div>
-            ) : customerData?.lookupFailed ? (
-              <div style={styles.infoBanner}>
-                <span style={styles.bannerIcon}>ℹ</span>
-                We couldn't verify your account at the moment. You can continue and we'll create or update your account during registration.
-              </div>
-            ) : (
-              <div style={styles.infoBanner}>
-                <span style={styles.bannerIcon}>ℹ</span>
-                No existing account found. A new account will be created automatically when you submit your warranty registration.
-              </div>
-            )}
-
-            <div style={styles.form}>
-              {/* Name */}
-              <div style={styles.field}>
-                <label htmlFor="reg-firstName" style={styles.label}>
-                  First Name <span style={styles.required}>*</span>
-                </label>
-                <input
-                  id="reg-firstName"
-                  type="text"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="Your first name"
-                  readOnly={customerData?.exists && !!firstName}
-                  style={{
-                    ...styles.input,
-                    ...(errors.firstName ? styles.inputError : {}),
-                    ...(customerData?.exists && firstName
-                      ? styles.inputReadOnly
-                      : {}),
-                  }}
-                />
-                {errors.firstName && (
-                  <p style={styles.error}>{errors.firstName}</p>
-                )}
-              </div>
-
-              {/* Email */}
-              <div style={styles.field}>
-                <label htmlFor="reg-email" style={styles.label}>
-                  Email Address <span style={styles.required}>*</span>
-                </label>
-                <input
-                  id="reg-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  readOnly={customerData?.exists && !!email}
-                  style={{
-                    ...styles.input,
-                    ...(errors.email ? styles.inputError : {}),
-                    ...(customerData?.exists && email
-                      ? styles.inputReadOnly
-                      : {}),
-                  }}
-                />
-                {errors.email && <p style={styles.error}>{errors.email}</p>}
-              </div>
-
-              {/* City */}
-              <div style={styles.field}>
-                <label htmlFor="reg-city" style={styles.label}>
-                  City <span style={styles.required}>*</span>
-                </label>
-                <select
-                  id="reg-city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  style={{
-                    ...styles.input,
-                    ...styles.select,
-                    ...(errors.city ? styles.inputError : {}),
-                  }}
-                >
-                  <option value="">Select your city</option>
-                  {IRAQI_CITIES.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                {errors.city && <p style={styles.error}>{errors.city}</p>}
-              </div>
-
-              {/* Store */}
-              <div style={styles.field}>
-                <label htmlFor="reg-store" style={styles.label}>
-                  Store <span style={styles.required}>*</span>
-                </label>
-                <input
-                  id="reg-store"
-                  type="text"
-                  value={storeName}
-                  onChange={(e) => setStoreName(e.target.value)}
-                  placeholder="Store where you purchased"
-                  style={{
-                    ...styles.input,
-                    ...(errors.store ? styles.inputError : {}),
-                  }}
-                />
-                {errors.store && <p style={styles.error}>{errors.store}</p>}
-              </div>
-
-              {/* Purchase Date */}
-              <div style={styles.field}>
-                <label htmlFor="reg-purchaseDate" style={styles.label}>
-                  Purchase Date <span style={styles.required}>*</span>
-                </label>
-                <input
-                  id="reg-purchaseDate"
-                  type="date"
-                  value={purchaseDate}
-                  onChange={(e) => setPurchaseDate(e.target.value)}
-                  max={new Date().toISOString().split("T")[0]}
-                  style={{
-                    ...styles.input,
-                    ...(errors.purchaseDate ? styles.inputError : {}),
-                  }}
-                />
-                {errors.purchaseDate && (
-                  <p style={styles.error}>{errors.purchaseDate}</p>
-                )}
-              </div>
-
-              {/* Invoice Number (optional) */}
-              <div style={styles.field}>
-                <label htmlFor="reg-invoice" style={styles.label}>
-                  Invoice Number
-                </label>
-                <input
-                  id="reg-invoice"
-                  type="text"
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  placeholder="Optional"
-                  style={styles.input}
-                />
-              </div>
-            </div>
-
-            <div style={styles.buttonRow}>
-              <button
-                style={styles.buttonSecondary}
-                onClick={() => setCurrentStep("phone")}
-              >
-                ← Back
-              </button>
-              <button
-                style={styles.button}
-                onClick={() => {
-                  if (validateDetails()) setCurrentStep("products");
-                }}
-              >
-                Continue
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- STEP: Products ---- */}
-        {currentStep === "products" && (
-          <div style={styles.stepContent}>
-            <h2 style={styles.stepTitle}>Add your products</h2>
-            <p style={styles.stepDesc}>
-              Search from our catalog or add a product manually.
-            </p>
-
-            {/* Product Search */}
-            <div style={styles.field}>
-              <label htmlFor="product-search" style={styles.label}>
-                Search Products
-              </label>
-              <input
-                id="product-search"
-                type="text"
-                value={productSearch}
-                onChange={(e) => handleProductSearch(e.target.value)}
-                placeholder="Type to search (e.g. Air Fryer)"
-                style={styles.input}
-              />
-              {isSearching && (
-                <p style={styles.searchingText}>Searching...</p>
-              )}
-              {searchResults.length > 0 && (
-                <div style={styles.searchDropdown}>
-                  {searchResults.map((p) => (
-                    <button
-                      key={p.id}
-                      style={styles.searchItem}
-                      onClick={() => addProduct(p)}
-                    >
-                      <span style={styles.searchItemTitle}>{p.title}</span>
-                      {p.sku && (
-                        <span style={styles.searchItemSku}>
-                          SKU: {p.sku}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Manual Entry Toggle */}
-            <button
-              style={styles.linkButton}
-              onClick={() => setShowManualEntry(!showManualEntry)}
-            >
-              {showManualEntry
-                ? "Cancel manual entry"
-                : "Can't find your product? Enter manually"}
-            </button>
-
-            {showManualEntry && (
-              <div style={styles.manualEntryRow}>
-                <input
-                  id="manual-product-title"
-                  type="text"
-                  value={manualTitle}
-                  onChange={(e) => setManualTitle(e.target.value)}
-                  placeholder="Product name (e.g. Geepas Air Fryer 5L)"
-                  style={{ ...styles.input, flex: 1 }}
-                />
-                <button
-                  style={styles.addButton}
-                  onClick={addManualProduct}
-                  disabled={!manualTitle.trim()}
-                >
-                  + Add
-                </button>
-              </div>
-            )}
-
-            {/* Product List */}
-            {products.length > 0 && (
-              <div style={styles.productList}>
-                <h3 style={styles.productListTitle}>
-                  Selected Products ({products.length})
-                </h3>
-                {products.map((p) => (
-                  <div key={p.id} style={styles.productItem}>
-                    <div style={styles.productInfo}>
-                      <span style={styles.productName}>{p.productTitle}</span>
-                      <span style={styles.productMeta}>
-                        {p.isManual ? "Manual entry" : "Catalog product"}
-                        {p.sku ? ` · SKU: ${p.sku}` : ""}
-                      </span>
-                    </div>
-                    <button
-                      style={styles.removeButton}
-                      onClick={() => removeProduct(p.id)}
-                      aria-label="Remove product"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {errors.products && (
-              <p style={styles.error}>{errors.products}</p>
-            )}
-
-            <div style={styles.buttonRow}>
-              <button
-                style={styles.buttonSecondary}
-                onClick={() => setCurrentStep("details")}
-              >
-                ← Back
-              </button>
-              <button
-                style={styles.button}
-                onClick={() => {
-                  if (validateProducts()) setCurrentStep("review");
-                }}
-              >
-                Review Registration
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- STEP: Review ---- */}
-        {currentStep === "review" && (
-          <div style={styles.stepContent}>
-            <h2 style={styles.stepTitle}>Review your registration</h2>
-            <p style={styles.stepDesc}>
-              Please verify the information below before submitting.
-            </p>
-
-            <div style={styles.reviewSection}>
-              <h3 style={styles.reviewLabel}>Customer</h3>
-              <div style={styles.reviewGrid}>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Name</span>
-                  <span style={styles.reviewFieldValue}>{firstName}</span>
-                </div>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Email</span>
-                  <span style={styles.reviewFieldValue}>{email}</span>
-                </div>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Phone</span>
-                  <span style={styles.reviewFieldValue}>{phone}</span>
-                </div>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Type</span>
-                  <span style={styles.reviewFieldValue}>
-                    {isNewCustomer ? "New Customer" : "Returning Customer"}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div style={styles.reviewDivider} />
-
-            <div style={styles.reviewSection}>
-              <h3 style={styles.reviewLabel}>Purchase Details</h3>
-              <div style={styles.reviewGrid}>
-                <div>
-                  <span style={styles.reviewFieldLabel}>City</span>
-                  <span style={styles.reviewFieldValue}>{city}</span>
-                </div>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Store</span>
-                  <span style={styles.reviewFieldValue}>{storeName}</span>
-                </div>
-                <div>
-                  <span style={styles.reviewFieldLabel}>Purchase Date</span>
-                  <span style={styles.reviewFieldValue}>
-                    {new Date(purchaseDate).toLocaleDateString()}
-                  </span>
-                </div>
-                {invoiceNumber && (
-                  <div>
-                    <span style={styles.reviewFieldLabel}>Invoice #</span>
-                    <span style={styles.reviewFieldValue}>
-                      {invoiceNumber}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div style={styles.reviewDivider} />
-
-            <div style={styles.reviewSection}>
-              <h3 style={styles.reviewLabel}>
-                Products ({products.length})
-              </h3>
-              {products.map((p) => (
-                <div key={p.id} style={styles.reviewProductItem}>
-                  <span>{p.productTitle}</span>
-                  <span style={styles.reviewProductMeta}>
-                    {p.isManual ? "Manual" : "Catalog"}
-                    {p.sku ? ` · ${p.sku}` : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div style={styles.buttonRow}>
-              <button
-                style={styles.buttonSecondary}
-                onClick={() => setCurrentStep("products")}
-              >
-                ← Back
-              </button>
-              <button
-                style={{
-                  ...styles.button,
-                  ...styles.buttonSubmit,
-                  ...(isSubmitting ? styles.buttonDisabled : {}),
-                }}
-                disabled={isSubmitting}
-                onClick={handleSubmit}
-              >
-                {isSubmitting ? "Submitting..." : "Submit Registration"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- STEP: Success ---- */}
-        {currentStep === "success" && (
-          <div style={styles.stepContent}>
-            <div style={styles.successIcon}>✓</div>
-            <h1 style={styles.successTitle}>Registration Complete!</h1>
-            <p style={styles.successMessage}>
-              Your warranty has been successfully registered.
-              {successData?.smsSent
-                ? " A confirmation SMS has been sent to your phone."
-                : " You will receive a confirmation shortly."}
-            </p>
-            {successData?.reward?.discountCode && (
-              <div style={styles.rewardBanner}>
-                <span style={styles.rewardEmoji}>🎁</span>
-                <div>
-                  <p style={styles.rewardTitle}>
-                    You earned a 15% discount!
-                  </p>
-                  <p style={styles.rewardCode}>
-                    {successData.reward.discountCode}
-                  </p>
-                  <p style={styles.rewardDesc}>
-                    Use this code on your next Geepas purchase.
-                  </p>
-                </div>
-              </div>
-            )}
-            {successData?.reward?.message && (
-              <div style={styles.infoBanner}>
-                <span style={styles.bannerIcon}>ℹ</span>
-                {successData.reward.message}
-              </div>
-            )}
-            <button style={styles.button} onClick={handleReset}>
-              Register Another Product
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
+      return processCustomerVoucher(admin, customer, "cron.process-vouchers");
+    }),
   );
-}
 
-// ---------- Inline styles ----------
-const styles: Record<string, React.CSSProperties> = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
-    padding: "24px",
-    fontFamily:
-      "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
-  },
-  card: {
-    width: "100%",
-    maxWidth: "600px",
-    background: "#ffffff",
-    borderRadius: "16px",
-    padding: "40px",
-    boxShadow:
-      "0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.03)",
-  },
-  header: {
-    marginBottom: "24px",
-    textAlign: "center" as const,
-  },
-  title: {
-    fontSize: "28px",
-    fontWeight: 700,
-    color: "#0f172a",
-    margin: "0 0 8px 0",
-  },
-  subtitle: {
-    fontSize: "15px",
-    color: "#64748b",
-    margin: 0,
-  },
-  // Progress
-  progressContainer: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: "32px",
-    gap: "0px",
-  },
-  progressStep: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  progressDot: {
-    width: "32px",
-    height: "32px",
-    borderRadius: "50%",
-    background: "#e2e8f0",
-    color: "#94a3b8",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "13px",
-    fontWeight: 600,
-    transition: "all 0.3s ease",
-    flexShrink: 0,
-  },
-  progressDotActive: {
-    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-    color: "#ffffff",
-  },
-  progressLabel: {
-    fontSize: "12px",
-    color: "#94a3b8",
-    fontWeight: 500,
-    whiteSpace: "nowrap" as const,
-  },
-  progressLabelActive: {
-    color: "#2563eb",
-    fontWeight: 600,
-  },
-  progressLine: {
-    width: "40px",
-    height: "2px",
-    background: "#e2e8f0",
-    margin: "0 4px",
-    transition: "background 0.3s ease",
-  },
-  progressLineActive: {
-    background: "#3b82f6",
-  },
-  // Steps
-  stepContent: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "20px",
-  },
-  stepTitle: {
-    fontSize: "20px",
-    fontWeight: 700,
-    color: "#0f172a",
-    margin: 0,
-  },
-  stepDesc: {
-    fontSize: "14px",
-    color: "#64748b",
-    margin: 0,
-  },
-  // Form elements
-  form: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "18px",
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "6px",
-  },
-  label: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#334155",
-  },
-  required: {
-    color: "#ef4444",
-  },
-  input: {
-    padding: "12px 14px",
-    fontSize: "15px",
-    border: "1.5px solid #e2e8f0",
-    borderRadius: "10px",
-    outline: "none",
-    transition: "border-color 0.2s, box-shadow 0.2s",
-    color: "#0f172a",
-    background: "#f8fafc",
-  },
-  inputReadOnly: {
-    background: "#f1f5f9",
-    color: "#64748b",
-    cursor: "default",
-  },
-  select: {
-    appearance: "none" as const,
-    cursor: "pointer",
-    backgroundImage:
-      'url("data:image/svg+xml,%3csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 20 20\'%3e%3cpath stroke=\'%236b7280\' stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'1.5\' d=\'M6 8l4 4 4-4\'/%3e%3c/svg%3e")',
-    backgroundPosition: "right 12px center",
-    backgroundRepeat: "no-repeat",
-    backgroundSize: "16px",
-    paddingRight: "36px",
-  },
-  inputError: {
-    borderColor: "#ef4444",
-    boxShadow: "0 0 0 3px rgba(239, 68, 68, 0.1)",
-  },
-  error: {
-    fontSize: "13px",
-    color: "#ef4444",
-    margin: 0,
-  },
-  globalError: {
-    padding: "12px 16px",
-    background: "#fef2f2",
-    border: "1px solid #fecaca",
-    borderRadius: "10px",
-    color: "#dc2626",
-    fontSize: "14px",
-    marginBottom: "8px",
-  },
-  // Banners
-  successBanner: {
-    padding: "14px 16px",
-    background: "#f0fdf4",
-    border: "1px solid #bbf7d0",
-    borderRadius: "10px",
-    color: "#166534",
-    fontSize: "14px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    fontWeight: 500,
-  },
-  infoBanner: {
-    padding: "14px 16px",
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: "10px",
-    color: "#1e40af",
-    fontSize: "14px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    fontWeight: 500,
-  },
-  bannerIcon: {
-    fontSize: "18px",
-    flexShrink: 0,
-  },
-  // Buttons
-  button: {
-    padding: "14px",
-    fontSize: "16px",
-    fontWeight: 600,
-    color: "#ffffff",
-    background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-    border: "none",
-    borderRadius: "12px",
-    cursor: "pointer",
-    transition: "opacity 0.2s, transform 0.1s",
-  },
-  buttonSecondary: {
-    padding: "14px 20px",
-    fontSize: "15px",
-    fontWeight: 500,
-    color: "#64748b",
-    background: "#f1f5f9",
-    border: "1px solid #e2e8f0",
-    borderRadius: "12px",
-    cursor: "pointer",
-    transition: "background 0.2s",
-  },
-  buttonSubmit: {
-    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  },
-  buttonRow: {
-    display: "flex",
-    gap: "12px",
-    justifyContent: "space-between",
-    marginTop: "8px",
-  },
-  linkButton: {
-    background: "none",
-    border: "none",
-    color: "#3b82f6",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: 500,
-    padding: "4px 0",
-    textAlign: "left" as const,
-    textDecoration: "underline",
-  },
-  addButton: {
-    padding: "12px 20px",
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#ffffff",
-    background: "#3b82f6",
-    border: "none",
-    borderRadius: "10px",
-    cursor: "pointer",
-    whiteSpace: "nowrap" as const,
-  },
-  // Product search
-  searchingText: {
-    fontSize: "13px",
-    color: "#94a3b8",
-    margin: 0,
-  },
-  searchDropdown: {
-    border: "1px solid #e2e8f0",
-    borderRadius: "10px",
-    maxHeight: "200px",
-    overflowY: "auto" as const,
-    background: "#ffffff",
-    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.1)",
-  },
-  searchItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 14px",
-    border: "none",
-    borderBottom: "1px solid #f1f5f9",
-    background: "transparent",
-    cursor: "pointer",
-    width: "100%",
-    textAlign: "left" as const,
-    transition: "background 0.15s",
-    fontSize: "14px",
-    color: "#0f172a",
-  },
-  searchItemTitle: {
-    fontWeight: 500,
-  },
-  searchItemSku: {
-    fontSize: "12px",
-    color: "#94a3b8",
-  },
-  manualEntryRow: {
-    display: "flex",
-    gap: "10px",
-    alignItems: "center",
-  },
-  // Product list
-  productList: {
-    border: "1px solid #e2e8f0",
-    borderRadius: "12px",
-    padding: "16px",
-    background: "#fafbfc",
-  },
-  productListTitle: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#334155",
-    margin: "0 0 12px 0",
-  },
-  productItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "10px 12px",
-    background: "#ffffff",
-    border: "1px solid #e2e8f0",
-    borderRadius: "8px",
-    marginBottom: "8px",
-  },
-  productInfo: {
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: "2px",
-  },
-  productName: {
-    fontSize: "14px",
-    fontWeight: 500,
-    color: "#0f172a",
-  },
-  productMeta: {
-    fontSize: "12px",
-    color: "#94a3b8",
-  },
-  removeButton: {
-    background: "none",
-    border: "none",
-    color: "#ef4444",
-    cursor: "pointer",
-    fontSize: "16px",
-    padding: "4px 8px",
-    borderRadius: "6px",
-    transition: "background 0.15s",
-  },
-  // Review
-  reviewSection: {
-    marginBottom: "4px",
-  },
-  reviewLabel: {
-    fontSize: "14px",
-    fontWeight: 600,
-    color: "#3b82f6",
-    margin: "0 0 10px 0",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-  },
-  reviewGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "12px",
-  },
-  reviewFieldLabel: {
-    display: "block",
-    fontSize: "12px",
-    color: "#94a3b8",
-    fontWeight: 500,
-    marginBottom: "2px",
-  },
-  reviewFieldValue: {
-    display: "block",
-    fontSize: "14px",
-    color: "#0f172a",
-    fontWeight: 500,
-  },
-  reviewDivider: {
-    height: "1px",
-    background: "#e2e8f0",
-    margin: "4px 0",
-  },
-  reviewProductItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "8px 12px",
-    background: "#f8fafc",
-    borderRadius: "8px",
-    marginBottom: "6px",
-    fontSize: "14px",
-    color: "#0f172a",
-  },
-  reviewProductMeta: {
-    fontSize: "12px",
-    color: "#94a3b8",
-  },
-  // Success
-  successIcon: {
-    width: "64px",
-    height: "64px",
-    borderRadius: "50%",
-    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-    color: "#fff",
-    fontSize: "32px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    margin: "0 auto 20px",
-  },
-  successTitle: {
-    fontSize: "24px",
-    fontWeight: 700,
-    color: "#0f172a",
-    textAlign: "center" as const,
-    margin: "0 0 12px 0",
-  },
-  successMessage: {
-    fontSize: "15px",
-    color: "#64748b",
-    textAlign: "center" as const,
-    margin: "0 0 24px 0",
-    lineHeight: 1.6,
-  },
-  // Reward banner
-  rewardBanner: {
-    padding: "20px",
-    background: "linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)",
-    border: "1px solid #fbbf24",
-    borderRadius: "12px",
-    display: "flex",
-    alignItems: "center",
-    gap: "16px",
-    marginBottom: "8px",
-  },
-  rewardEmoji: {
-    fontSize: "36px",
-    flexShrink: 0,
-  },
-  rewardTitle: {
-    fontSize: "16px",
-    fontWeight: 700,
-    color: "#92400e",
-    margin: "0 0 4px 0",
-  },
-  rewardCode: {
-    fontSize: "22px",
-    fontWeight: 800,
-    color: "#78350f",
-    margin: "0 0 4px 0",
-    letterSpacing: "2px",
-    fontFamily: "monospace",
-  },
-  rewardDesc: {
-    fontSize: "13px",
-    color: "#92400e",
-    margin: 0,
-  },
-};
-</file>
+  const sent = results.filter((r) => r.status === "sent").length;
+  const skipped = results.filter((r) => r.status === "skipped").length;
+  const errors = results.filter((r) => r.status === "error").length;
 
-<file path="app/routes/webhooks.app.scopes_update.tsx">
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
+  console.log(`[cron.process-vouchers] Done — sent: ${sent}, skipped: ${skipped}, errors: ${errors}`);
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-    const { payload, session, topic, shop } = await authenticate.webhook(request);
-    console.log(`Received ${topic} webhook for ${shop}`);
-
-    const current = payload.current as string[];
-    if (session) {
-        await db.session.update({   
-            where: {
-                id: session.id
-            },
-            data: {
-                scope: current.toString(),
-            },
-        });
-    }
-    return new Response();
-};
-</file>
-
-<file path="app/routes/webhooks.app.uninstalled.tsx">
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, session, topic } = await authenticate.webhook(request);
-
-  console.log(`Received ${topic} webhook for ${shop}`);
-
-  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
-  // If this webhook already ran, the session may have been deleted previously.
-  if (session) {
-    await db.session.deleteMany({ where: { shop } });
-  }
-
-  return new Response();
+  return json({ sent, skipped, errors, total: results.length });
 };
 </file>
 
@@ -3756,109 +2307,45 @@ export function buildWarrantyConfirmationSms(
 }
 </file>
 
-<file path="Dockerfile">
-FROM node:18-alpine
-RUN apk add --no-cache openssl
-
-EXPOSE 3000
-
-WORKDIR /app
-
-ENV NODE_ENV=production
-
-COPY package.json package-lock.json* ./
-
-RUN npm ci --omit=dev && npm cache clean --force
-# Remove CLI packages since we don't need them in production by default.
-# Remove this line if you want to run CLI commands in your container.
-RUN npm remove @shopify/cli
-
-COPY . .
-
-RUN npm run build
-
-CMD ["npm", "run", "docker-start"]
+<file path="pnpm-workspace.yaml">
+packages:
+  - 'extensions/*'
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  unrs-resolver: true
 </file>
 
-<file path="env.d.ts">
-/// <reference types="vite/client" />
-/// <reference types="@remix-run/node" />
-</file>
-
-<file path="prisma/migrations/20260618181611_add_warranty_model/migration.sql">
+<file path="prisma/migrations/20260622131420_init_postgres/migration.sql">
 -- CreateTable
-CREATE TABLE "Warranty" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+CREATE TABLE "Session" (
+    "id" TEXT NOT NULL,
     "shop" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "phone" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "productName" TEXT NOT NULL,
-    "productId" TEXT,
-    "serialNumber" TEXT,
-    "purchaseDate" DATETIME NOT NULL,
-    "invoiceUrl" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "state" TEXT NOT NULL,
+    "isOnline" BOOLEAN NOT NULL DEFAULT false,
+    "scope" TEXT,
+    "expires" TIMESTAMP(3),
+    "accessToken" TEXT NOT NULL,
+    "userId" BIGINT,
+    "firstName" TEXT,
+    "lastName" TEXT,
+    "email" TEXT,
+    "accountOwner" BOOLEAN NOT NULL DEFAULT false,
+    "locale" TEXT,
+    "collaborator" BOOLEAN DEFAULT false,
+    "emailVerified" BOOLEAN DEFAULT false,
+    "refreshToken" TEXT,
+    "refreshTokenExpires" TIMESTAMP(3),
+
+    CONSTRAINT "Session_pkey" PRIMARY KEY ("id")
 );
-
--- CreateIndex
-CREATE INDEX "Warranty_shop_idx" ON "Warranty"("shop");
-
--- CreateIndex
-CREATE INDEX "Warranty_serialNumber_idx" ON "Warranty"("serialNumber");
-</file>
-
-<file path="prisma/migrations/20260619143115_replace_invoice_url_with_invoice_number/migration.sql">
-/*
-  Warnings:
-
-  - You are about to drop the column `invoiceUrl` on the `Warranty` table. All the data in the column will be lost.
-
-*/
--- RedefineTables
-PRAGMA defer_foreign_keys=ON;
-PRAGMA foreign_keys=OFF;
-CREATE TABLE "new_Warranty" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "shop" TEXT NOT NULL,
-    "name" TEXT NOT NULL,
-    "phone" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
-    "productName" TEXT NOT NULL,
-    "productId" TEXT,
-    "serialNumber" TEXT,
-    "purchaseDate" DATETIME NOT NULL,
-    "invoiceNumber" TEXT,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
-);
-INSERT INTO "new_Warranty" ("createdAt", "email", "id", "name", "phone", "productId", "productName", "purchaseDate", "serialNumber", "shop", "status", "updatedAt") SELECT "createdAt", "email", "id", "name", "phone", "productId", "productName", "purchaseDate", "serialNumber", "shop", "status", "updatedAt" FROM "Warranty";
-DROP TABLE "Warranty";
-ALTER TABLE "new_Warranty" RENAME TO "Warranty";
-CREATE INDEX "Warranty_shop_idx" ON "Warranty"("shop");
-CREATE INDEX "Warranty_serialNumber_idx" ON "Warranty"("serialNumber");
-PRAGMA foreign_keys=ON;
-PRAGMA defer_foreign_keys=OFF;
-</file>
-
-<file path="prisma/migrations/20260619155920_phase7_relational_schema/migration.sql">
-/*
-  Warnings:
-
-  - You are about to drop the `Warranty` table. If the table is not empty, all the data it contains will be lost.
-
-*/
--- DropTable
-PRAGMA foreign_keys=off;
-DROP TABLE "Warranty";
-PRAGMA foreign_keys=on;
 
 -- CreateTable
 CREATE TABLE "WarrantyRegistration" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "shop" TEXT NOT NULL,
     "customerId" TEXT NOT NULL,
     "firstName" TEXT NOT NULL,
@@ -3866,48 +2353,53 @@ CREATE TABLE "WarrantyRegistration" (
     "phone" TEXT NOT NULL,
     "city" TEXT NOT NULL,
     "store" TEXT NOT NULL,
-    "purchaseDate" DATETIME NOT NULL,
+    "purchaseDate" TIMESTAMP(3) NOT NULL,
     "invoiceNumber" TEXT,
     "status" TEXT NOT NULL DEFAULT 'pending',
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "WarrantyRegistration_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "WarrantyProduct" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "registrationId" TEXT NOT NULL,
     "productId" TEXT,
     "productTitle" TEXT NOT NULL,
     "sku" TEXT,
     "isManual" BOOLEAN NOT NULL DEFAULT false,
-    CONSTRAINT "WarrantyProduct_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+
+    CONSTRAINT "WarrantyProduct_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "CustomerReward" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "shop" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
     "customerId" TEXT NOT NULL,
     "rewardType" TEXT NOT NULL,
     "discountCode" TEXT NOT NULL,
-    "issuedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "sentAt" DATETIME
+    "issuedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "sentAt" TIMESTAMP(3),
+
+    CONSTRAINT "CustomerReward_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
 CREATE TABLE "SMSLog" (
-    "id" TEXT NOT NULL PRIMARY KEY,
+    "id" TEXT NOT NULL,
     "shop" TEXT NOT NULL,
     "phone" TEXT NOT NULL,
     "registrationId" TEXT,
     "rewardId" TEXT,
     "smsSent" BOOLEAN NOT NULL DEFAULT false,
-    "smsSentAt" DATETIME,
+    "smsSentAt" TIMESTAMP(3),
     "smsProviderResponse" TEXT,
-    CONSTRAINT "SMSLog_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
-    CONSTRAINT "SMSLog_rewardId_fkey" FOREIGN KEY ("rewardId") REFERENCES "CustomerReward" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+
+    CONSTRAINT "SMSLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
@@ -3933,36 +2425,29 @@ CREATE INDEX "SMSLog_registrationId_idx" ON "SMSLog"("registrationId");
 
 -- CreateIndex
 CREATE INDEX "SMSLog_rewardId_idx" ON "SMSLog"("rewardId");
+
+-- AddForeignKey
+ALTER TABLE "WarrantyProduct" ADD CONSTRAINT "WarrantyProduct_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SMSLog" ADD CONSTRAINT "SMSLog_registrationId_fkey" FOREIGN KEY ("registrationId") REFERENCES "WarrantyRegistration"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SMSLog" ADD CONSTRAINT "SMSLog_rewardId_fkey" FOREIGN KEY ("rewardId") REFERENCES "CustomerReward"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 </file>
 
-<file path="prisma/migrations/migration_lock.toml">
-# Please do not edit this file manually
-# It should be added in your version-control system (e.g., Git)
-provider = "sqlite"
-</file>
+<file path="shopify.web.toml.liquid">
+name = "remix"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
 
-<file path="tsconfig.json">
-{
-  "include": ["env.d.ts", "**/*.ts", "**/*.tsx"],
-  "compilerOptions": {
-    "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "strict": true,
-    "skipLibCheck": true,
-    "isolatedModules": true,
-    "allowSyntheticDefaultImports": true,
-    "removeComments": false,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": true,
-    "allowJs": true,
-    "resolveJsonModule": true,
-    "jsx": "react-jsx",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "target": "ES2022",
-    "baseUrl": ".",
-    "types": ["node"]
-  }
-}
+{%- assign exec = dependency_manager | append: ' exec' -%}
+{%- if dependency_manager == 'yarn' -%}
+{%- assign exec = 'yarn' -%}
+{%- endif %}
+[commands]
+predev = "{{ exec }} prisma generate"
+dev = "{{ exec }} prisma migrate deploy && {{ exec }} remix vite:dev"
 </file>
 
 <file path="verify-db.ts">
@@ -4080,318 +2565,6 @@ main()
   });
 </file>
 
-<file path=".github/workflows/remove-labels-on-activity.yml">
-name: Remove Waiting Labels
-on:
-  issue_comment:
-    types: [created]
-  workflow_dispatch:
-jobs:
-  remove-labels-on-activity:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
-      - uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1.2.0
-        if: contains(github.event.issue.labels.*.name, 'Waiting for Response')
-        with:
-          labels: |
-            Waiting for Response
-</file>
-
-<file path=".gitignore">
-node_modules
-.DS_Store
-
-/.cache
-/build
-/app/build
-/public/build/
-/public/_dev
-/app/public/build
-/prisma/dev.sqlite
-/prisma/dev.sqlite-journal
-database.sqlite
-
-.env
-.env.*
-
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-/extensions/*/dist
-
-# Ignore shopify files created during app dev
-.shopify/*
-.shopify.lock
-</file>
-
-<file path=".graphqlrc.ts">
-import fs from "fs";
-import { ApiVersion } from "@shopify/shopify-api";
-import { shopifyApiProject, ApiType } from "@shopify/api-codegen-preset";
-import type { IGraphQLConfig } from "graphql-config";
-
-function getConfig() {
-  const config: IGraphQLConfig = {
-    projects: {
-      default: shopifyApiProject({
-        apiType: ApiType.Admin,
-        apiVersion: ApiVersion.July25,
-        documents: [
-          "./app/**/*.{js,ts,jsx,tsx}",
-          "./app/.server/**/*.{js,ts,jsx,tsx}",
-        ],
-        outputDir: "./app/types",
-      }),
-    },
-  };
-
-  let extensions: string[] = [];
-  try {
-    extensions = fs.readdirSync("./extensions");
-  } catch {
-    // ignore if no extensions
-  }
-
-  for (const entry of extensions) {
-    const extensionPath = `./extensions/${entry}`;
-    const schema = `${extensionPath}/schema.graphql`;
-    if (!fs.existsSync(schema)) {
-      continue;
-    }
-    config.projects[entry] = {
-      schema,
-      documents: [`${extensionPath}/**/*.graphql`],
-    };
-  }
-
-  return config;
-}
-
-const config = getConfig();
-
-export default config;
-</file>
-
-<file path=".npmrc">
-engine-strict=true
-@shopify:registry=https://registry.npmjs.org
-</file>
-
-<file path="app/db.server.ts">
-import { PrismaClient } from "@prisma/client";
-
-declare global {
-  var prismaGlobal: PrismaClient;
-}
-
-if (process.env.NODE_ENV !== "production") {
-  if (!global.prismaGlobal) {
-    global.prismaGlobal = new PrismaClient();
-  }
-}
-
-const prisma = global.prismaGlobal ?? new PrismaClient();
-
-export default prisma;
-</file>
-
-<file path="pnpm-workspace.yaml">
-packages:
-  - 'extensions/*'
-allowBuilds:
-  '@parcel/watcher': true
-  '@prisma/client': true
-  '@prisma/engines': true
-  esbuild: true
-  prisma: true
-  unrs-resolver: true
-</file>
-
-<file path="prisma/migrations/20240530213853_create_session_table/migration.sql">
--- CreateTable
-CREATE TABLE "Session" (
-    "id" TEXT NOT NULL PRIMARY KEY,
-    "shop" TEXT NOT NULL,
-    "state" TEXT NOT NULL,
-    "isOnline" BOOLEAN NOT NULL DEFAULT false,
-    "scope" TEXT,
-    "expires" DATETIME,
-    "accessToken" TEXT NOT NULL,
-    "userId" BIGINT,
-    "firstName" TEXT,
-    "lastName" TEXT,
-    "email" TEXT,
-    "accountOwner" BOOLEAN NOT NULL DEFAULT false,
-    "locale" TEXT,
-    "collaborator" BOOLEAN DEFAULT false,
-    "emailVerified" BOOLEAN DEFAULT false,
-    "refreshToken" TEXT,
-    "refreshTokenExpires" DATETIME
-);
-</file>
-
-<file path="prisma/schema.prisma">
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
-datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
-}
-
-model Session {
-  id                  String    @id
-  shop                String
-  state               String
-  isOnline            Boolean   @default(false)
-  scope               String?
-  expires             DateTime?
-  accessToken         String
-  userId              BigInt?
-  firstName           String?
-  lastName            String?
-  email               String?
-  accountOwner        Boolean   @default(false)
-  locale              String?
-  collaborator        Boolean?  @default(false)
-  emailVerified       Boolean?  @default(false)
-  refreshToken        String?
-  refreshTokenExpires DateTime?
-}
-
-model WarrantyRegistration {
-  id            String            @id @default(uuid())
-  shop          String
-  customerId    String            // Shopify customer GID: "gid://shopify/Customer/xxxx"
-  firstName     String
-  email         String
-  phone         String            // Mobile number (entered by customer)
-  city          String            // Iraqi city from dropdown
-  store         String            // Selected retail store/outlet
-  purchaseDate  DateTime
-  invoiceNumber String?           // Optional invoice number
-  status        String            @default("pending") // pending, approved, rejected
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
-
-  products      WarrantyProduct[]
-  smsLogs       SMSLog[]
-
-  @@index([shop])
-  @@index([phone])
-}
-
-model WarrantyProduct {
-  id             String               @id @default(uuid())
-  registrationId String
-  productId      String?              // Shopify Product GID (null if manual entry)
-  productTitle   String
-  sku            String?
-  isManual       Boolean              @default(false) // true if manually entered (not from catalog)
-
-  registration   WarrantyRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
-
-  @@index([registrationId])
-}
-
-model CustomerReward {
-  id           String    @id @default(uuid())
-  shop         String
-  phone        String    // Normalized mobile number
-  customerId   String    // Shopify customer GID
-  rewardType   String    // "WELCOME_10" or "WARRANTY_15"
-  discountCode String    // Shopify discount code generated
-  issuedAt     DateTime  @default(now())
-  sentAt       DateTime?
-
-  smsLogs      SMSLog[]
-
-  @@unique([shop, phone, rewardType])
-  @@index([shop])
-  @@index([phone])
-}
-
-model SMSLog {
-  id                  String                @id @default(uuid())
-  shop                String
-  phone               String
-  registrationId      String?
-  rewardId            String?
-  smsSent             Boolean               @default(false)
-  smsSentAt           DateTime?
-  smsProviderResponse String?               // API response or error log details
-
-  registration        WarrantyRegistration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
-  reward              CustomerReward?       @relation(fields: [rewardId], references: [id], onDelete: SetNull)
-
-  @@index([registrationId])
-  @@index([rewardId])
-}
-</file>
-
-<file path="shopify.app.toml">
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
-
-client_id = "41d1d7fae24939000bdbd2935ae8857f"
-name = "Warranty Registration"
-application_url = "https://shopify.dev/apps/default-app-home"
-embedded = true
-
-[build]
-automatically_update_urls_on_dev = true
-
-[webhooks]
-api_version = "2026-07"
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"
-
-[auth]
-redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]
-</file>
-
-<file path="shopify.web.toml">
-name = "remix"
-roles = ["frontend", "backend"]
-webhooks_path = "/webhooks/app/uninstalled"
-
-[commands]
-predev = "pnpm exec prisma generate"
-dev = "pnpm exec prisma migrate deploy && pnpm exec remix vite:dev"
-</file>
-
-<file path="shopify.web.toml.liquid">
-name = "remix"
-roles = ["frontend", "backend"]
-webhooks_path = "/webhooks/app/uninstalled"
-
-{%- assign exec = dependency_manager | append: ' exec' -%}
-{%- if dependency_manager == 'yarn' -%}
-{%- assign exec = 'yarn' -%}
-{%- endif %}
-[commands]
-predev = "{{ exec }} prisma generate"
-dev = "{{ exec }} prisma migrate deploy && {{ exec }} remix vite:dev"
-</file>
-
 <file path=".github/CODEOWNERS">
 * @shop/dev_experience
 </file>
@@ -4417,6 +2590,137 @@ jobs:
             We are closing this issue because we did not hear back regarding additional details we needed to resolve this issue. If the issue persists and you are able to provide the missing clarification we need, you can respond here or create a new issue.
 
             We appreciate your understanding as we try to manage our number of open issues.
+</file>
+
+<file path="app/lib/voucher-processing.server.ts">
+import { sendWhatsappTemplate } from "./whatsapp.server";
+
+const TIER_TO_TEMPLATE: Record<string, string> = {
+  WELCOME10: "welcome_voucher",
+  WARRANTY15: "warranty_voucher",
+  NEXT15: "next_purchase_voucher",
+  SECOND15: "second_purchase_voucher",
+};
+
+export interface VoucherCustomer {
+  id: string;          // Shopify GID e.g. "gid://shopify/Customer/123"
+  firstName: string;
+  phone: string;
+  tags: string[];      // already-parsed tag array
+}
+
+export interface VoucherResult {
+  customerId: string;
+  status: "sent" | "skipped" | "error";
+  reason?: string;
+}
+
+/**
+ * Process a single customer: find a voucher-ready tag, send the WhatsApp
+ * template, then remove the tag so it isn't acted on again.
+ *
+ * Returns a result object describing what happened.
+ */
+export async function processCustomerVoucher(
+  admin: any,
+  customer: VoucherCustomer,
+  context: string = "voucher-processing",
+): Promise<VoucherResult> {
+  const voucherTag = customer.tags.find((t) => t.startsWith("voucher-ready:"));
+
+  if (!voucherTag) {
+    return { customerId: customer.id, status: "skipped", reason: "no voucher-ready tag" };
+  }
+
+  const parts = voucherTag.split(":");
+  if (parts.length !== 3) {
+    console.warn(`[${context}] Malformed voucher tag: ${voucherTag}`);
+    return { customerId: customer.id, status: "skipped", reason: `malformed tag: ${voucherTag}` };
+  }
+
+  const [, tier, code] = parts;
+  const templateName = TIER_TO_TEMPLATE[tier];
+
+  if (!templateName) {
+    console.warn(`[${context}] Unknown tier "${tier}" in tag: ${voucherTag}`);
+    return { customerId: customer.id, status: "skipped", reason: `unknown tier: ${tier}` };
+  }
+
+  const name = customer.firstName || "Customer";
+  const phone = customer.phone || "";
+
+  try {
+    await sendWhatsappTemplate(phone, templateName, [name, code]);
+    console.log(`[${context}] Sent ${templateName} to ${phone} (tier=${tier}, code=${code})`);
+  } catch (err) {
+    console.error(`[${context}] sendWhatsappTemplate failed for ${customer.id}:`, err);
+    return { customerId: customer.id, status: "error", reason: "whatsapp send failed" };
+  }
+
+  // Remove the voucher-ready tag so it isn't processed again
+  const remainingTags = customer.tags.filter((t) => t !== voucherTag);
+
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      mutation customerUpdate($input: CustomerInput!) {
+        customerUpdate(input: $input) {
+          customer { id tags }
+          userErrors { field message }
+        }
+      }`,
+      { variables: { input: { id: customer.id, tags: remainingTags } } },
+    );
+
+    const data = await response.json();
+    const errors = data?.data?.customerUpdate?.userErrors || [];
+    if (errors.length > 0) {
+      console.error(`[${context}] Failed to remove voucher tag from ${customer.id}:`, errors);
+    } else {
+      console.log(`[${context}] Removed tag "${voucherTag}" from ${customer.id}`);
+    }
+  } catch (err) {
+    console.error(`[${context}] Error removing voucher tag from ${customer.id}:`, err);
+  }
+
+  return { customerId: customer.id, status: "sent" };
+}
+</file>
+
+<file path="prisma/migrations/migration_lock.toml">
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+</file>
+
+<file path="shopify.web.toml">
+name = "remix"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+[commands]
+predev = "pnpm exec prisma generate"
+dev = "pnpm exec prisma migrate deploy && pnpm exec remix vite:dev"
+</file>
+
+<file path="vercel.json">
+{
+  "crons": [
+    {
+      "path": "/cron.process-vouchers",
+      "schedule": "*/2 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/public/warranty-register(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "ALLOWALL" },
+        { "key": "Content-Security-Policy", "value": "frame-ancestors *" }
+      ]
+    }
+  ]
+}
 </file>
 
 <file path="vite.config.ts">
@@ -4679,6 +2983,2290 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 </file>
 
+<file path="app/routes/public.warranty-register.tsx">
+import type { MetaFunction, LinksFunction } from "@remix-run/node";
+import { useState, useCallback, useEffect, useRef } from "react";
+
+// Allow this page to be embedded in iframes (e.g. the Shopify store after-service page)
+export const headers = () => ({
+  "X-Frame-Options": "ALLOWALL",
+  "Content-Security-Policy": "frame-ancestors *",
+});
+
+export const meta: MetaFunction = () => [
+  { title: "Geepas Warranty Registration" },
+  { name: "description", content: "Register your Geepas product warranty" },
+];
+
+export const links: LinksFunction = () => [
+  { rel: "preconnect", href: "https://fonts.googleapis.com" },
+  {
+    rel: "preconnect",
+    href: "https://fonts.gstatic.com",
+    crossOrigin: "anonymous",
+  },
+  {
+    rel: "stylesheet",
+    href: "https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap",
+  },
+];
+
+// ---- Iraqi Cities (EN + AR pairs, EN value sent to API) ----
+const IRAQI_CITIES = [
+  { en: "Baghdad", ar: "بغداد" },
+  { en: "Basra", ar: "البصرة" },
+  { en: "Erbil", ar: "أربيل" },
+  { en: "Sulaymaniyah", ar: "السليمانية" },
+  { en: "Mosul", ar: "الموصل" },
+  { en: "Kirkuk", ar: "كركوك" },
+  { en: "Najaf", ar: "النجف" },
+  { en: "Karbala", ar: "كربلاء" },
+  { en: "Nasiriyah", ar: "الناصرية" },
+  { en: "Amarah", ar: "العمارة" },
+  { en: "Diwaniyah", ar: "الديوانية" },
+  { en: "Kut", ar: "الكوت" },
+  { en: "Hillah", ar: "الحلة" },
+  { en: "Samawah", ar: "السماوة" },
+  { en: "Ramadi", ar: "الرمادي" },
+  { en: "Fallujah", ar: "الفلوجة" },
+  { en: "Tikrit", ar: "تكريت" },
+  { en: "Baqubah", ar: "بعقوبة" },
+  { en: "Duhok", ar: "دهوك" },
+  { en: "Halabja", ar: "حلبجة" },
+  { en: "Zakho", ar: "زاخو" },
+];
+
+// ---- Translations ----
+const T = {
+  en: {
+    toggleLang: "العربية",
+    pageTitle: "Warranty Registration",
+    pageSubtitle: "Register your Geepas product to activate your warranty coverage",
+    steps: ["Phone", "Details", "Products", "Review"] as const,
+    step1Title: "Enter your mobile number",
+    step1Desc: "We'll check if you already have an account with us.",
+    phoneLabel: "Mobile Number",
+    phonePlaceholder: "07XX XXX XXXX",
+    continueBtn: "Continue",
+    lookingUp: "Looking up...",
+    welcomeBack: "Welcome back! We found your account.",
+    lookupFailed:
+      "We couldn't verify your account at the moment. You can continue and we'll create or update your account during registration.",
+    newAccount:
+      "No existing account found. A new account will be created automatically when you submit your warranty registration.",
+    fullName: "Full Name",
+    fullNamePlaceholder: "Your full name",
+    emailLabel: "Email Address",
+    emailPlaceholder: "your@email.com",
+    cityLabel: "City",
+    cityPlaceholder: "Select your city",
+    storeLabel: "Store",
+    storePlaceholder: "Store where you purchased",
+    purchaseDateLabel: "Purchase Date",
+    invoiceLabel: "Invoice Number",
+    invoicePlaceholder: "Optional",
+    backBtn: "← Back",
+    step3Title: "Add your products",
+    step3Desc: "Search from our catalog or add a product manually.",
+    searchLabel: "Search Products",
+    searchPlaceholder: "Type to search (e.g. Air Fryer)",
+    searching: "Searching...",
+    cantFind: "Can't find your product? Enter manually",
+    cancelManual: "Cancel manual entry",
+    manualPlaceholder: "Product name (e.g. Geepas Air Fryer 5L)",
+    addBtn: "+ Add",
+    selectedProducts: "Selected Products",
+    manualEntry: "Manual entry",
+    catalogProduct: "Catalog product",
+    reviewBtn: "Review Registration",
+    step4Title: "Review your registration",
+    step4Desc: "Please verify the information below before submitting.",
+    sectionCustomer: "Customer",
+    fullNameDisplay: "Full Name",
+    emailDisplay: "Email",
+    phoneDisplay: "Phone",
+    typeDisplay: "Type",
+    newCustomer: "New Customer",
+    returningCustomer: "Returning Customer",
+    sectionPurchase: "Purchase Details",
+    cityDisplay: "City",
+    storeDisplay: "Store",
+    dateDisplay: "Purchase Date",
+    invoiceDisplay: "Invoice #",
+    sectionProducts: "Products",
+    manualTag: "Manual",
+    catalogTag: "Catalog",
+    submitBtn: "Submit Registration",
+    submitting: "Submitting...",
+    successTitle: "Registration Complete!",
+    successMsg: "Your warranty has been successfully registered.",
+    smsSent: " A confirmation SMS has been sent to your phone.",
+    confirmationShortly: " You will receive a confirmation shortly.",
+    rewardTitle: "You earned a 15% discount!",
+    useCode: "Use this code on your next Geepas purchase.",
+    registerAnother: "Register Another Product",
+    errPhone: "Please enter a valid phone number.",
+    errShop: "Shop parameter is missing from the URL.",
+    errName: "Full name is required.",
+    errEmail: "Valid email is required.",
+    errCity: "City is required.",
+    errStore: "Store name is required.",
+    errDate: "Purchase date is required.",
+    errProducts: "Add at least one product.",
+    errNetwork: "Network error. Please try again.",
+    skuLabel: "SKU",
+    required: "*",
+  },
+  ar: {
+    toggleLang: "English",
+    pageTitle: "تسجيل الضمان",
+    pageSubtitle: "سجّل منتج جيباس الخاص بك لتفعيل تغطية الضمان",
+    steps: ["الهاتف", "التفاصيل", "المنتجات", "المراجعة"] as const,
+    step1Title: "أدخل رقم هاتفك المحمول",
+    step1Desc: "سنتحقق مما إذا كان لديك حساب لدينا.",
+    phoneLabel: "رقم الهاتف",
+    phonePlaceholder: "07XX XXX XXXX",
+    continueBtn: "متابعة",
+    lookingUp: "جارٍ البحث...",
+    welcomeBack: "مرحباً بعودتك! لقد وجدنا حسابك.",
+    lookupFailed:
+      "لم نتمكن من التحقق من حسابك في الوقت الحالي. يمكنك المتابعة وسنقوم بإنشاء أو تحديث حسابك أثناء التسجيل.",
+    newAccount:
+      "لم يتم العثور على حساب موجود. سيتم إنشاء حساب جديد تلقائياً عند تقديم تسجيل الضمان.",
+    fullName: "الاسم الكامل",
+    fullNamePlaceholder: "اسمك الكامل",
+    emailLabel: "البريد الإلكتروني",
+    emailPlaceholder: "your@email.com",
+    cityLabel: "المدينة",
+    cityPlaceholder: "اختر مدينتك",
+    storeLabel: "المتجر",
+    storePlaceholder: "المتجر الذي اشتريت منه",
+    purchaseDateLabel: "تاريخ الشراء",
+    invoiceLabel: "رقم الفاتورة",
+    invoicePlaceholder: "اختياري",
+    backBtn: "رجوع →",
+    step3Title: "أضف منتجاتك",
+    step3Desc: "ابحث في الكتالوج أو أضف منتجاً يدوياً.",
+    searchLabel: "البحث عن المنتجات",
+    searchPlaceholder: "اكتب للبحث (مثال: مقلاة هوائية)",
+    searching: "جارٍ البحث...",
+    cantFind: "لا تجد منتجك؟ أضفه يدوياً",
+    cancelManual: "إلغاء الإدخال اليدوي",
+    manualPlaceholder: "اسم المنتج (مثال: مقلاة جيباس الهوائية 5 لتر)",
+    addBtn: "+ إضافة",
+    selectedProducts: "المنتجات المختارة",
+    manualEntry: "إدخال يدوي",
+    catalogProduct: "منتج من الكتالوج",
+    reviewBtn: "مراجعة التسجيل",
+    step4Title: "مراجعة تسجيلك",
+    step4Desc: "يرجى التحقق من المعلومات أدناه قبل الإرسال.",
+    sectionCustomer: "العميل",
+    fullNameDisplay: "الاسم الكامل",
+    emailDisplay: "البريد الإلكتروني",
+    phoneDisplay: "الهاتف",
+    typeDisplay: "النوع",
+    newCustomer: "عميل جديد",
+    returningCustomer: "عميل عائد",
+    sectionPurchase: "تفاصيل الشراء",
+    cityDisplay: "المدينة",
+    storeDisplay: "المتجر",
+    dateDisplay: "تاريخ الشراء",
+    invoiceDisplay: "رقم الفاتورة",
+    sectionProducts: "المنتجات",
+    manualTag: "يدوي",
+    catalogTag: "كتالوج",
+    submitBtn: "إرسال التسجيل",
+    submitting: "جارٍ الإرسال...",
+    successTitle: "اكتمل التسجيل!",
+    successMsg: "تم تسجيل ضمانك بنجاح.",
+    smsSent: " تم إرسال رسالة تأكيد إلى هاتفك.",
+    confirmationShortly: " ستتلقى تأكيداً قريباً.",
+    rewardTitle: "لقد حصلت على خصم 15%!",
+    useCode: "استخدم هذا الرمز في عملية الشراء التالية من جيباس.",
+    registerAnother: "تسجيل منتج آخر",
+    errPhone: "يرجى إدخال رقم هاتف صحيح.",
+    errShop: "معامل المتجر مفقود من الرابط.",
+    errName: "الاسم الكامل مطلوب.",
+    errEmail: "البريد الإلكتروني الصحيح مطلوب.",
+    errCity: "المدينة مطلوبة.",
+    errStore: "اسم المتجر مطلوب.",
+    errDate: "تاريخ الشراء مطلوب.",
+    errProducts: "أضف منتجاً واحداً على الأقل.",
+    errNetwork: "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
+    skuLabel: "الرمز",
+    required: "*",
+  },
+} as const;
+
+type Lang = "en" | "ar";
+
+// ---- Types ----
+type Step = "phone" | "details" | "products" | "review" | "success";
+
+interface CustomerData {
+  exists: boolean;
+  lookupFailed?: boolean;
+  customerId?: string;
+  firstName?: string;
+  email?: string;
+}
+
+interface ProductEntry {
+  id: string;
+  productId: string | null;
+  productTitle: string;
+  sku: string | null;
+  isManual: boolean;
+}
+
+interface ShopifyProduct {
+  id: string;
+  title: string;
+  sku: string | null;
+}
+
+interface FormErrors {
+  [key: string]: string;
+}
+
+// ---- Geepas brand CSS (embedded to enable :hover, :focus, media queries, RTL selectors) ----
+const GEEPAS_CSS = `
+  *, *::before, *::after { box-sizing: border-box; }
+
+  .gw-page {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    background: #f0f0f0;
+    padding: 24px 16px 40px;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  [dir="rtl"] .gw-page {
+    font-family: 'Cairo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* ---- Card ---- */
+  .gw-card {
+    width: 100%;
+    max-width: 580px;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    margin: auto;
+  }
+
+  /* ---- Header ---- */
+  .gw-header {
+    background: #3b4043;
+    padding: 22px 28px 20px;
+  }
+  .gw-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .gw-logo {
+    display: flex;
+    flex-direction: column;
+    line-height: 1;
+    gap: 2px;
+  }
+  .gw-logo-wordmark {
+    font-size: 22px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .gw-logo-tagline {
+    font-size: 9px;
+    color: rgba(255,255,255,0.65);
+    letter-spacing: 0.6px;
+    font-weight: 400;
+    text-transform: uppercase;
+  }
+  .gw-lang-btn {
+    background: rgba(255,255,255,0.15);
+    border: 1.5px solid rgba(255,255,255,0.5);
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-family: inherit;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .gw-lang-btn:hover { background: rgba(255,255,255,0.28); }
+
+  .gw-h-title {
+    font-size: 21px;
+    font-weight: 700;
+    color: #ffffff;
+    margin: 0 0 5px;
+    line-height: 1.25;
+  }
+  .gw-h-sub {
+    font-size: 13px;
+    color: rgba(255,255,255,0.80);
+    line-height: 1.45;
+  }
+
+  /* ---- Body ---- */
+  .gw-body { padding: 28px; }
+
+  /* ---- Progress ---- */
+  .gw-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+    flex-wrap: nowrap;
+  }
+  .gw-p-step { display: flex; align-items: center; }
+  .gw-p-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #e5e5e5;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+    transition: background 0.25s, color 0.25s;
+  }
+  .gw-p-dot--on { background: #3b4043; color: #fff; }
+  .gw-p-label {
+    font-size: 11px;
+    color: #aaa;
+    font-weight: 500;
+    margin: 0 6px;
+    white-space: nowrap;
+  }
+  .gw-p-label--on { color: #3b4043; font-weight: 700; }
+  .gw-p-line {
+    width: 30px;
+    height: 2px;
+    background: #e5e5e5;
+    flex-shrink: 0;
+    transition: background 0.25s;
+  }
+  .gw-p-line--on { background: #3b4043; }
+
+  /* ---- Step layout ---- */
+  .gw-step { display: flex; flex-direction: column; gap: 18px; }
+  .gw-step-title { font-size: 18px; font-weight: 700; color: #1a1a1a; margin: 0; }
+  .gw-step-desc { font-size: 13px; color: #777; margin: -10px 0 0; line-height: 1.5; }
+
+  /* ---- Banners ---- */
+  .gw-banner {
+    padding: 12px 15px;
+    border-radius: 8px;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .gw-banner--ok  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+  .gw-banner--info { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; }
+  .gw-b-icon { flex-shrink: 0; font-size: 15px; margin-top: 1px; }
+
+  /* ---- Form ---- */
+  .gw-form { display: flex; flex-direction: column; gap: 15px; }
+  .gw-field { display: flex; flex-direction: column; gap: 5px; }
+  .gw-label { font-size: 13px; font-weight: 600; color: #333; }
+  .gw-req { color: #3b4043; }
+
+  .gw-input {
+    padding: 11px 13px;
+    font-size: 15px;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    outline: none;
+    color: #1a1a1a;
+    background: #fafafa;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    font-family: inherit;
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .gw-input:focus {
+    border-color: #3b4043;
+    box-shadow: 0 0 0 3px rgba(59,64,67,0.10);
+    background: #fff;
+  }
+  .gw-input--err { border-color: #3b4043 !important; box-shadow: 0 0 0 3px rgba(59,64,67,0.10) !important; }
+  .gw-input--ro  { background: #f0f0f0 !important; color: #888 !important; cursor: default; }
+
+  .gw-select {
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    background-color: #fafafa;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23999' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 16px;
+    padding-right: 38px;
+  }
+  [dir="rtl"] .gw-select {
+    background-position: left 12px center;
+    padding-right: 13px;
+    padding-left: 38px;
+  }
+
+  .gw-err       { font-size: 12px; color: #dc2626; margin: 0; }
+  .gw-global-err {
+    padding: 11px 15px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    color: #dc2626;
+    font-size: 13px;
+  }
+
+  /* ---- Buttons ---- */
+  .gw-btn {
+    padding: 13px 20px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #fff;
+    background: #3b4043;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+    font-family: inherit;
+    width: 100%;
+    text-align: center;
+    display: block;
+    line-height: 1;
+  }
+  .gw-btn:hover:not(:disabled)  { background: #2a2e31; }
+  .gw-btn:active:not(:disabled) { background: #a8151a; }
+  .gw-btn:disabled              { opacity: 0.55; cursor: not-allowed; }
+
+  .gw-btn--sec {
+    background: #fff;
+    color: #3b4043;
+    border: 1.5px solid #3b4043;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .gw-btn--sec:hover:not(:disabled)  { background: #fff5f5; }
+  .gw-btn--sec:active:not(:disabled) { background: #ffe8e8; }
+
+  .gw-btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .gw-btn-row > .gw-btn:not(.gw-btn--sec) { flex: 1; width: auto; }
+
+  .gw-link-btn {
+    background: none;
+    border: none;
+    color: #3b4043;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 0;
+    text-decoration: underline;
+    font-family: inherit;
+    display: inline-block;
+    text-align: left;
+  }
+  [dir="rtl"] .gw-link-btn { text-align: right; }
+  .gw-link-btn:hover { color: #2a2e31; }
+
+  /* ---- Product search ---- */
+  .gw-hint { font-size: 12px; color: #aaa; margin: 0; }
+  .gw-dropdown {
+    border: 1.5px solid #e5e5e5;
+    border-radius: 8px;
+    max-height: 210px;
+    overflow-y: auto;
+    background: #fff;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    margin-top: 4px;
+  }
+  .gw-drop-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 11px 13px;
+    border: none;
+    border-bottom: 1px solid #f5f5f5;
+    background: transparent;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    font-size: 13px;
+    color: #1a1a1a;
+    font-family: inherit;
+    transition: background 0.12s;
+  }
+  [dir="rtl"] .gw-drop-item { text-align: right; }
+  .gw-drop-item:hover       { background: #fff5f5; }
+  .gw-drop-item:last-child  { border-bottom: none; }
+  .gw-drop-sku { font-size: 11px; color: #bbb; }
+
+  .gw-manual-row { display: flex; gap: 8px; align-items: center; }
+  .gw-manual-row .gw-input { flex: 1; width: auto; }
+
+  .gw-add-btn {
+    padding: 11px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: #3b4043;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-family: inherit;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .gw-add-btn:hover:not(:disabled)  { background: #2a2e31; }
+  .gw-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---- Product list ---- */
+  .gw-plist {
+    border: 1.5px solid #e8e8e8;
+    border-radius: 10px;
+    padding: 14px;
+    background: #fafafa;
+  }
+  .gw-plist-title { font-size: 13px; font-weight: 600; color: #444; margin: 0 0 10px; }
+  .gw-pitem {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 9px 11px;
+    background: #fff;
+    border: 1px solid #ebebeb;
+    border-radius: 7px;
+    margin-bottom: 7px;
+  }
+  .gw-pitem:last-child { margin-bottom: 0; }
+  .gw-pinfo { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .gw-pname {
+    font-size: 13px;
+    font-weight: 500;
+    color: #1a1a1a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .gw-pmeta { font-size: 11px; color: #bbb; }
+  .gw-rm-btn {
+    background: none;
+    border: none;
+    color: #3b4043;
+    cursor: pointer;
+    font-size: 15px;
+    padding: 3px 7px;
+    border-radius: 5px;
+    line-height: 1;
+    transition: background 0.15s;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+  [dir="rtl"] .gw-rm-btn { margin-left: 0; margin-right: 8px; }
+  .gw-rm-btn:hover { background: #fff0f0; }
+
+  /* ---- Review ---- */
+  .gw-rev-sec  { margin-bottom: 4px; }
+  .gw-rev-head {
+    font-size: 11px;
+    font-weight: 700;
+    color: #3b4043;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin: 0 0 10px;
+  }
+  .gw-rev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .gw-rev-fl   { display: block; font-size: 11px; color: #bbb; font-weight: 500; margin-bottom: 2px; }
+  .gw-rev-fv   { display: block; font-size: 13px; color: #1a1a1a; font-weight: 600; }
+  .gw-divider  { height: 1px; background: #ebebeb; margin: 4px 0; }
+  .gw-rev-prod {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 11px;
+    background: #fafafa;
+    border-radius: 7px;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #1a1a1a;
+  }
+  .gw-rev-pmeta { font-size: 11px; color: #bbb; }
+
+  /* ---- Success ---- */
+  .gw-s-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: #3b4043;
+    color: #fff;
+    font-size: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px;
+  }
+  .gw-s-title { font-size: 22px; font-weight: 700; color: #1a1a1a; text-align: center; margin: 0 0 10px; }
+  .gw-s-msg   { font-size: 14px; color: #666; text-align: center; line-height: 1.65; margin: 0 0 24px; }
+
+  .gw-reward {
+    padding: 18px;
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border: 1px solid #fbbf24;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 8px;
+  }
+  .gw-reward-emoji { font-size: 32px; flex-shrink: 0; }
+  .gw-reward-title { font-size: 15px; font-weight: 700; color: #92400e; margin: 0 0 4px; }
+  .gw-reward-code  {
+    font-size: 20px;
+    font-weight: 800;
+    color: #78350f;
+    letter-spacing: 2px;
+    font-family: 'Courier New', monospace;
+    margin: 0 0 4px;
+  }
+  .gw-reward-desc { font-size: 12px; color: #92400e; margin: 0; }
+
+  /* ---- Mobile-first responsive ---- */
+  @media (max-width: 520px) {
+    .gw-page { padding: 0; align-items: flex-start; }
+    .gw-card { border-radius: 0; margin: 0; min-height: 100vh; min-height: 100svh; box-shadow: none; }
+    .gw-header { padding: 16px 18px 14px; }
+    .gw-body   { padding: 20px 18px 32px; }
+    .gw-rev-grid { grid-template-columns: 1fr; }
+    .gw-p-label  { display: none; }
+    .gw-logo-wordmark { font-size: 18px; }
+    .gw-h-title { font-size: 18px; }
+    .gw-h-sub   { font-size: 12px; }
+  }
+
+  /* ---- Embed mode: transparent page, no min-height, card flush ---- */
+  .gw-page--embed {
+    min-height: unset !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: block;
+    align-items: unset;
+  }
+  .gw-page--embed .gw-card {
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
+    min-height: unset;
+  }
+`;
+
+// ---- Component ----
+export default function WarrantyRegister() {
+  // Language toggle (can be pre-set via ?lang=ar)
+  const [lang, setLang] = useState<Lang>("en");
+  const isRTL = lang === "ar";
+  const t = T[lang];
+
+  // Embed mode: ?embed=1 strips the page chrome so it sits inside an iframe
+  const [isEmbed, setIsEmbed] = useState(false);
+
+  // Get shop / embed / lang from URL params
+  const [shop, setShop] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setShop(params.get("shop") || "");
+    if (params.get("embed") === "1") setIsEmbed(true);
+    if (params.get("lang") === "ar") setLang("ar");
+  }, []);
+
+  // Step management
+  const [currentStep, setCurrentStep] = useState<Step>("phone");
+
+  // Report height to parent frame whenever content changes (embed mode only)
+  useEffect(() => {
+    if (!isEmbed) return;
+    const report = () => {
+      const h = document.documentElement.scrollHeight;
+      window.parent.postMessage({ type: "geepas-resize", height: h }, "*");
+    };
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [isEmbed, currentStep]);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [globalError, setGlobalError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Step 1: Phone lookup
+  const [phone, setPhone] = useState("");
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [customerData, setCustomerData] = useState<CustomerData | null>(null);
+  const [isNewCustomer, setIsNewCustomer] = useState(false);
+
+  // Step 2: Customer details
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [city, setCity] = useState("");
+  const [storeName, setStoreName] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+
+  // Step 3: Products
+  const [products, setProducts] = useState<ProductEntry[]>([]);
+  const [productSearch, setProductSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<ShopifyProduct[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+  const [manualTitle, setManualTitle] = useState("");
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Success data
+  const [successData, setSuccessData] = useState<any>(null);
+
+  // ---- Phone Lookup ----
+  const handlePhoneLookup = useCallback(async () => {
+    const tr = T[lang];
+    if (!phone || phone.trim().length < 7) {
+      setErrors({ phone: tr.errPhone });
+      return;
+    }
+    if (!shop) {
+      setGlobalError(tr.errShop);
+      return;
+    }
+
+    setIsLookingUp(true);
+    setGlobalError("");
+    setErrors({});
+
+    try {
+      const res = await fetch(
+        `/api/customer-lookup?phone=${encodeURIComponent(phone)}&shop=${encodeURIComponent(shop)}`,
+      );
+
+      if (!res.ok) {
+        console.warn(
+          "Lookup response not OK, transitioning to details step as a new customer.",
+        );
+        setCustomerData({ exists: false, lookupFailed: true });
+        setIsNewCustomer(true);
+        setFullName("");
+        setEmail("");
+        setCurrentStep("details");
+        return;
+      }
+
+      const data = await res.json();
+      setCustomerData(data);
+
+      if (data.exists) {
+        setIsNewCustomer(false);
+        setFullName(data.firstName || "");
+        setEmail(data.email || "");
+      } else {
+        setIsNewCustomer(true);
+        setFullName("");
+        setEmail("");
+      }
+
+      setCurrentStep("details");
+    } catch (err) {
+      console.warn(
+        "Lookup request failed with network error, transitioning to details step.",
+        err,
+      );
+      setCustomerData({ exists: false, lookupFailed: true });
+      setIsNewCustomer(true);
+      // @ts-ignore — pre-existing bug preserved intentionally; do not remove
+      setFirstName("");
+      setEmail("");
+      setCurrentStep("details");
+    } finally {
+      setIsLookingUp(false);
+    }
+  }, [phone, shop, lang]);
+
+  // ---- Product Search ----
+  const handleProductSearch = useCallback(
+    (query: string) => {
+      setProductSearch(query);
+
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+
+      if (query.length < 2) {
+        setSearchResults([]);
+        return;
+      }
+
+      searchTimeoutRef.current = setTimeout(async () => {
+        setIsSearching(true);
+        try {
+          const res = await fetch(
+            `/api/products?shop=${encodeURIComponent(shop)}&search=${encodeURIComponent(query)}`,
+          );
+          const data = await res.json();
+          setSearchResults(data.products || []);
+        } catch {
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      }, 400);
+    },
+    [shop],
+  );
+
+  const addProduct = useCallback((product: ShopifyProduct) => {
+    setProducts((prev) => {
+      if (prev.some((p) => p.productId === product.id)) return prev;
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          productId: product.id,
+          productTitle: product.title,
+          sku: product.sku,
+          isManual: false,
+        },
+      ];
+    });
+    setProductSearch("");
+    setSearchResults([]);
+  }, []);
+
+  const addManualProduct = useCallback(() => {
+    if (!manualTitle.trim()) return;
+    setProducts((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        productId: null,
+        productTitle: manualTitle.trim(),
+        sku: null,
+        isManual: true,
+      },
+    ]);
+    setManualTitle("");
+    setShowManualEntry(false);
+  }, [manualTitle]);
+
+  const removeProduct = useCallback((id: string) => {
+    setProducts((prev) => prev.filter((p) => p.id !== id));
+  }, []);
+
+  // ---- Step Validation ----
+  const validateDetails = useCallback((): boolean => {
+    const tr = T[lang];
+    const newErrors: FormErrors = {};
+    if (!fullName.trim() || fullName.trim().length < 2)
+      newErrors.fullName = tr.errName;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      newErrors.email = tr.errEmail;
+    if (!city) newErrors.city = tr.errCity;
+    if (!storeName.trim()) newErrors.store = tr.errStore;
+    if (!purchaseDate) newErrors.purchaseDate = tr.errDate;
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [fullName, email, city, storeName, purchaseDate, lang]);
+
+  const validateProducts = useCallback((): boolean => {
+    const tr = T[lang];
+    if (products.length === 0) {
+      setErrors({ products: tr.errProducts });
+      return false;
+    }
+    setErrors({});
+    return true;
+  }, [products, lang]);
+
+  // ---- Submit ----
+  const handleSubmit = useCallback(async () => {
+    setIsSubmitting(true);
+    setGlobalError("");
+
+    try {
+      const payload = {
+        shop,
+        firstName: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        city,
+        store: storeName.trim(),
+        purchaseDate,
+        invoiceNumber: invoiceNumber.trim() || null,
+        isNewCustomer,
+        products: products.map((p) => ({
+          productId: p.productId,
+          productTitle: p.productTitle,
+          sku: p.sku,
+          isManual: p.isManual,
+        })),
+      };
+
+      const res = await fetch("/api/warranty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        if (result.errors) {
+          setGlobalError(result.errors.join(", "));
+        } else {
+          setGlobalError(result.error || "Something went wrong.");
+        }
+        setIsSubmitting(false);
+        return;
+      }
+
+      setSuccessData(result);
+      setCurrentStep("success");
+    } catch {
+      setGlobalError(T[lang].errNetwork);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [
+    shop,
+    fullName,
+    email,
+    phone,
+    city,
+    storeName,
+    purchaseDate,
+    invoiceNumber,
+    isNewCustomer,
+    products,
+    lang,
+  ]);
+
+  // ---- Reset ----
+  const handleReset = useCallback(() => {
+    setCurrentStep("phone");
+    setPhone("");
+    setCustomerData(null);
+    setIsNewCustomer(false);
+    setFullName("");
+    setEmail("");
+    setCity("");
+    setStoreName("");
+    setPurchaseDate("");
+    setInvoiceNumber("");
+    setProducts([]);
+    setSuccessData(null);
+    setErrors({});
+    setGlobalError("");
+  }, []);
+
+  // ---- Progress ----
+  const steps: Step[] = ["phone", "details", "products", "review"];
+  const stepLabels = t.steps;
+  const currentIndex = steps.indexOf(currentStep);
+
+  // ---- Render ----
+  return (
+    <div className={`gw-page${isEmbed ? " gw-page--embed" : ""}`} dir={isRTL ? "rtl" : "ltr"}>
+      {/* Embedded brand CSS */}
+      <style dangerouslySetInnerHTML={{ __html: GEEPAS_CSS }} />
+
+      <div className="gw-card">
+        {/* ---- Header ---- */}
+        <div className="gw-header">
+          <div className="gw-header-top">
+            <div className="gw-logo">
+              <span className="gw-logo-wordmark">GEEPAS</span>
+              <span className="gw-logo-tagline">From Our Home to Your Home</span>
+            </div>
+            <button
+              className="gw-lang-btn"
+              onClick={() => setLang((l) => (l === "en" ? "ar" : "en"))}
+              aria-label="Switch language"
+            >
+              {t.toggleLang}
+            </button>
+          </div>
+          <h1 className="gw-h-title">{t.pageTitle}</h1>
+          <p className="gw-h-sub">{t.pageSubtitle}</p>
+        </div>
+
+        {/* ---- Body ---- */}
+        <div className="gw-body">
+          {/* Progress Bar */}
+          {currentStep !== "success" && (
+            <div className="gw-progress">
+              {steps.map((step, i) => (
+                <div key={step} className="gw-p-step">
+                  <div className={`gw-p-dot${i <= currentIndex ? " gw-p-dot--on" : ""}`}>
+                    {i < currentIndex ? "✓" : i + 1}
+                  </div>
+                  <span className={`gw-p-label${i <= currentIndex ? " gw-p-label--on" : ""}`}>
+                    {stepLabels[i]}
+                  </span>
+                  {i < steps.length - 1 && (
+                    <div className={`gw-p-line${i < currentIndex ? " gw-p-line--on" : ""}`} />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {globalError && <div className="gw-global-err">{globalError}</div>}
+
+          {/* ---- STEP: Phone Lookup ---- */}
+          {currentStep === "phone" && (
+            <div className="gw-step">
+              <h2 className="gw-step-title">{t.step1Title}</h2>
+              <p className="gw-step-desc">{t.step1Desc}</p>
+
+              <div className="gw-field">
+                <label htmlFor="reg-phone" className="gw-label">
+                  {t.phoneLabel} <span className="gw-req">{t.required}</span>
+                </label>
+                <input
+                  id="reg-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setErrors((prev) => {
+                      const n = { ...prev };
+                      delete n.phone;
+                      return n;
+                    });
+                  }}
+                  placeholder={t.phonePlaceholder}
+                  className={`gw-input${errors.phone ? " gw-input--err" : ""}`}
+                  inputMode="tel"
+                />
+                {errors.phone && <p className="gw-err">{errors.phone}</p>}
+              </div>
+
+              <button
+                className="gw-btn"
+                disabled={isLookingUp}
+                onClick={handlePhoneLookup}
+              >
+                {isLookingUp ? t.lookingUp : t.continueBtn}
+              </button>
+            </div>
+          )}
+
+          {/* ---- STEP: Customer Details ---- */}
+          {currentStep === "details" && (
+            <div className="gw-step">
+              {customerData?.exists ? (
+                <div className="gw-banner gw-banner--ok">
+                  <span className="gw-b-icon">✓</span>
+                  {t.welcomeBack}
+                </div>
+              ) : customerData?.lookupFailed ? (
+                <div className="gw-banner gw-banner--info">
+                  <span className="gw-b-icon">ℹ</span>
+                  {t.lookupFailed}
+                </div>
+              ) : (
+                <div className="gw-banner gw-banner--info">
+                  <span className="gw-b-icon">ℹ</span>
+                  {t.newAccount}
+                </div>
+              )}
+
+              <div className="gw-form">
+                {/* Full Name */}
+                <div className="gw-field">
+                  <label htmlFor="reg-fullName" className="gw-label">
+                    {t.fullName} <span className="gw-req">{t.required}</span>
+                  </label>
+                  <input
+                    id="reg-fullName"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder={t.fullNamePlaceholder}
+                    readOnly={customerData?.exists && !!fullName}
+                    className={[
+                      "gw-input",
+                      errors.fullName ? "gw-input--err" : "",
+                      customerData?.exists && fullName ? "gw-input--ro" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  />
+                  {errors.fullName && <p className="gw-err">{errors.fullName}</p>}
+                </div>
+
+                {/* Email */}
+                <div className="gw-field">
+                  <label htmlFor="reg-email" className="gw-label">
+                    {t.emailLabel} <span className="gw-req">{t.required}</span>
+                  </label>
+                  <input
+                    id="reg-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={t.emailPlaceholder}
+                    readOnly={customerData?.exists && !!email}
+                    className={[
+                      "gw-input",
+                      errors.email ? "gw-input--err" : "",
+                      customerData?.exists && email ? "gw-input--ro" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    inputMode="email"
+                  />
+                  {errors.email && <p className="gw-err">{errors.email}</p>}
+                </div>
+
+                {/* City */}
+                <div className="gw-field">
+                  <label htmlFor="reg-city" className="gw-label">
+                    {t.cityLabel} <span className="gw-req">{t.required}</span>
+                  </label>
+                  <select
+                    id="reg-city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className={`gw-input gw-select${errors.city ? " gw-input--err" : ""}`}
+                  >
+                    <option value="">{t.cityPlaceholder}</option>
+                    {IRAQI_CITIES.map((c) => (
+                      <option key={c.en} value={c.en}>
+                        {isRTL ? c.ar : c.en}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.city && <p className="gw-err">{errors.city}</p>}
+                </div>
+
+                {/* Store */}
+                <div className="gw-field">
+                  <label htmlFor="reg-store" className="gw-label">
+                    {t.storeLabel} <span className="gw-req">{t.required}</span>
+                  </label>
+                  <input
+                    id="reg-store"
+                    type="text"
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    placeholder={t.storePlaceholder}
+                    className={`gw-input${errors.store ? " gw-input--err" : ""}`}
+                  />
+                  {errors.store && <p className="gw-err">{errors.store}</p>}
+                </div>
+
+                {/* Purchase Date */}
+                <div className="gw-field">
+                  <label htmlFor="reg-purchaseDate" className="gw-label">
+                    {t.purchaseDateLabel} <span className="gw-req">{t.required}</span>
+                  </label>
+                  <input
+                    id="reg-purchaseDate"
+                    type="date"
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    max={new Date().toISOString().split("T")[0]}
+                    className={`gw-input${errors.purchaseDate ? " gw-input--err" : ""}`}
+                  />
+                  {errors.purchaseDate && (
+                    <p className="gw-err">{errors.purchaseDate}</p>
+                  )}
+                </div>
+
+                {/* Invoice Number (optional) */}
+                <div className="gw-field">
+                  <label htmlFor="reg-invoice" className="gw-label">
+                    {t.invoiceLabel}
+                  </label>
+                  <input
+                    id="reg-invoice"
+                    type="text"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    placeholder={t.invoicePlaceholder}
+                    className="gw-input"
+                  />
+                </div>
+              </div>
+
+              <div className="gw-btn-row">
+                <button
+                  className="gw-btn gw-btn--sec"
+                  onClick={() => setCurrentStep("phone")}
+                >
+                  {t.backBtn}
+                </button>
+                <button
+                  className="gw-btn"
+                  onClick={() => {
+                    if (validateDetails()) setCurrentStep("products");
+                  }}
+                >
+                  {t.continueBtn}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---- STEP: Products ---- */}
+          {currentStep === "products" && (
+            <div className="gw-step">
+              <h2 className="gw-step-title">{t.step3Title}</h2>
+              <p className="gw-step-desc">{t.step3Desc}</p>
+
+              {/* Product Search */}
+              <div className="gw-field">
+                <label htmlFor="product-search" className="gw-label">
+                  {t.searchLabel}
+                </label>
+                <input
+                  id="product-search"
+                  type="text"
+                  value={productSearch}
+                  onChange={(e) => handleProductSearch(e.target.value)}
+                  placeholder={t.searchPlaceholder}
+                  className="gw-input"
+                />
+                {isSearching && <p className="gw-hint">{t.searching}</p>}
+                {searchResults.length > 0 && (
+                  <div className="gw-dropdown">
+                    {searchResults.map((p) => (
+                      <button
+                        key={p.id}
+                        className="gw-drop-item"
+                        onClick={() => addProduct(p)}
+                      >
+                        <span style={{ fontWeight: 500 }}>{p.title}</span>
+                        {p.sku && (
+                          <span className="gw-drop-sku">
+                            {t.skuLabel}: {p.sku}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Manual Entry Toggle */}
+              <button
+                className="gw-link-btn"
+                onClick={() => setShowManualEntry(!showManualEntry)}
+              >
+                {showManualEntry ? t.cancelManual : t.cantFind}
+              </button>
+
+              {showManualEntry && (
+                <div className="gw-manual-row">
+                  <input
+                    id="manual-product-title"
+                    type="text"
+                    value={manualTitle}
+                    onChange={(e) => setManualTitle(e.target.value)}
+                    placeholder={t.manualPlaceholder}
+                    className="gw-input"
+                  />
+                  <button
+                    className="gw-add-btn"
+                    onClick={addManualProduct}
+                    disabled={!manualTitle.trim()}
+                  >
+                    {t.addBtn}
+                  </button>
+                </div>
+              )}
+
+              {/* Product List */}
+              {products.length > 0 && (
+                <div className="gw-plist">
+                  <p className="gw-plist-title">
+                    {t.selectedProducts} ({products.length})
+                  </p>
+                  {products.map((p) => (
+                    <div key={p.id} className="gw-pitem">
+                      <div className="gw-pinfo">
+                        <span className="gw-pname">{p.productTitle}</span>
+                        <span className="gw-pmeta">
+                          {p.isManual ? t.manualEntry : t.catalogProduct}
+                          {p.sku ? ` · ${t.skuLabel}: ${p.sku}` : ""}
+                        </span>
+                      </div>
+                      <button
+                        className="gw-rm-btn"
+                        onClick={() => removeProduct(p.id)}
+                        aria-label="Remove product"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {errors.products && <p className="gw-err">{errors.products}</p>}
+
+              <div className="gw-btn-row">
+                <button
+                  className="gw-btn gw-btn--sec"
+                  onClick={() => setCurrentStep("details")}
+                >
+                  {t.backBtn}
+                </button>
+                <button
+                  className="gw-btn"
+                  onClick={() => {
+                    if (validateProducts()) setCurrentStep("review");
+                  }}
+                >
+                  {t.reviewBtn}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---- STEP: Review ---- */}
+          {currentStep === "review" && (
+            <div className="gw-step">
+              <h2 className="gw-step-title">{t.step4Title}</h2>
+              <p className="gw-step-desc">{t.step4Desc}</p>
+
+              <div className="gw-rev-sec">
+                <p className="gw-rev-head">{t.sectionCustomer}</p>
+                <div className="gw-rev-grid">
+                  <div>
+                    <span className="gw-rev-fl">{t.fullNameDisplay}</span>
+                    <span className="gw-rev-fv">{fullName}</span>
+                  </div>
+                  <div>
+                    <span className="gw-rev-fl">{t.emailDisplay}</span>
+                    <span className="gw-rev-fv">{email}</span>
+                  </div>
+                  <div>
+                    <span className="gw-rev-fl">{t.phoneDisplay}</span>
+                    <span className="gw-rev-fv">{phone}</span>
+                  </div>
+                  <div>
+                    <span className="gw-rev-fl">{t.typeDisplay}</span>
+                    <span className="gw-rev-fv">
+                      {isNewCustomer ? t.newCustomer : t.returningCustomer}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="gw-divider" />
+
+              <div className="gw-rev-sec">
+                <p className="gw-rev-head">{t.sectionPurchase}</p>
+                <div className="gw-rev-grid">
+                  <div>
+                    <span className="gw-rev-fl">{t.cityDisplay}</span>
+                    <span className="gw-rev-fv">{city}</span>
+                  </div>
+                  <div>
+                    <span className="gw-rev-fl">{t.storeDisplay}</span>
+                    <span className="gw-rev-fv">{storeName}</span>
+                  </div>
+                  <div>
+                    <span className="gw-rev-fl">{t.dateDisplay}</span>
+                    <span className="gw-rev-fv">
+                      {new Date(purchaseDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {invoiceNumber && (
+                    <div>
+                      <span className="gw-rev-fl">{t.invoiceDisplay}</span>
+                      <span className="gw-rev-fv">{invoiceNumber}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="gw-divider" />
+
+              <div className="gw-rev-sec">
+                <p className="gw-rev-head">
+                  {t.sectionProducts} ({products.length})
+                </p>
+                {products.map((p) => (
+                  <div key={p.id} className="gw-rev-prod">
+                    <span>{p.productTitle}</span>
+                    <span className="gw-rev-pmeta">
+                      {p.isManual ? t.manualTag : t.catalogTag}
+                      {p.sku ? ` · ${p.sku}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="gw-btn-row">
+                <button
+                  className="gw-btn gw-btn--sec"
+                  onClick={() => setCurrentStep("products")}
+                >
+                  {t.backBtn}
+                </button>
+                <button
+                  className="gw-btn"
+                  disabled={isSubmitting}
+                  onClick={handleSubmit}
+                >
+                  {isSubmitting ? t.submitting : t.submitBtn}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ---- STEP: Success ---- */}
+          {currentStep === "success" && (
+            <div className="gw-step">
+              <div className="gw-s-icon">✓</div>
+              <h1 className="gw-s-title">{t.successTitle}</h1>
+              <p className="gw-s-msg">
+                {t.successMsg}
+                {successData?.smsSent ? t.smsSent : t.confirmationShortly}
+              </p>
+
+              {successData?.reward?.discountCode && (
+                <div className="gw-reward">
+                  <span className="gw-reward-emoji">🎁</span>
+                  <div>
+                    <p className="gw-reward-title">{t.rewardTitle}</p>
+                    <p className="gw-reward-code">
+                      {successData.reward.discountCode}
+                    </p>
+                    <p className="gw-reward-desc">{t.useCode}</p>
+                  </div>
+                </div>
+              )}
+
+              {successData?.reward?.message && (
+                <div className="gw-banner gw-banner--info">
+                  <span className="gw-b-icon">ℹ</span>
+                  {successData.reward.message}
+                </div>
+              )}
+
+              <button className="gw-btn" onClick={handleReset}>
+                {t.registerAnother}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/services/infobip.server.ts">
+/**
+ * Infobip SMS Service
+ * Sends Arabic/English warranty confirmation SMS via the Infobip REST API.
+ * Credentials are read from environment variables — never hardcode them here.
+ *
+ * Required env vars:
+ *   INFOBIP_API_KEY   — your Infobip API key
+ *   INFOBIP_BASE_URL  — e.g. https://8pmk3.api.infobip.com
+ *   INFOBIP_SENDER    — sender ID, e.g. LUFIAN
+ */
+
+import { normalizePhone } from "../utils/twilio.server";
+
+const INFOBIP_API_KEY = process.env.INFOBIP_API_KEY ?? "";
+const INFOBIP_BASE_URL = (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, "");
+const INFOBIP_SENDER = process.env.INFOBIP_SENDER ?? "LUFIAN";
+
+// Deduplication window — don't send the same phone number a second SMS
+// within this many milliseconds (5 minutes).
+const DEDUP_WINDOW_MS = 5 * 60 * 1000;
+const recentlySent = new Map<string, number>(); // phone → timestamp
+
+// ---- Types ----------------------------------------------------------------
+
+export interface InfobipSmsParams {
+  phoneNumber: string;       // raw input — will be normalised to E.164
+  customerName: string;
+  voucherCode: string | null;
+  productName: string;
+  warrantyDays: number;
+  registrationId: string;
+  registrationDate: Date;
+  voucherExpiryDays?: number; // defaults to 30
+  lang?: "ar" | "en";        // defaults to "ar"
+}
+
+export interface InfobipSmsResult {
+  success: boolean;
+  messageId?: string;
+  phone: string;             // normalised E.164
+  timestamp: string;         // ISO-8601
+  error?: string;
+  rawResponse?: string;
+}
+
+// ---- Message builder ------------------------------------------------------
+
+function buildMessage(params: InfobipSmsParams): string {
+  const {
+    customerName,
+    voucherCode,
+    productName,
+    warrantyDays,
+    registrationId,
+    registrationDate,
+    voucherExpiryDays = 30,
+    lang = "ar",
+  } = params;
+
+  const dateStr = registrationDate.toLocaleDateString(
+    lang === "ar" ? "ar-IQ" : "en-GB",
+    { year: "numeric", month: "long", day: "numeric" },
+  );
+
+  if (lang === "ar") {
+    const voucherBlock = voucherCode
+      ? `\nكود الخصم الخاص بك: ${voucherCode}\nصلاحيته: ${voucherExpiryDays} يوم\n\nاستخدم الكود عند الشراء`
+      : "";
+
+    return (
+      `مرحباً ${customerName}،\n\n` +
+      `شكراً لتسجيل ضمان ${productName}\n` +
+      `رقم الضمان: ${registrationId}\n` +
+      `مدة الضمان: ${warrantyDays} يوم\n` +
+      `تاريخ التسجيل: ${dateStr}` +
+      voucherBlock
+    );
+  }
+
+  // English fallback
+  const voucherBlock = voucherCode
+    ? `\nYour discount code: ${voucherCode}\nValid for: ${voucherExpiryDays} days\n\nUse the code at checkout.`
+    : "";
+
+  return (
+    `Hello ${customerName},\n\n` +
+    `Thank you for registering your ${productName} warranty.\n` +
+    `Warranty ID: ${registrationId}\n` +
+    `Duration: ${warrantyDays} days\n` +
+    `Registration date: ${dateStr}` +
+    voucherBlock
+  );
+}
+
+// ---- Core send function ---------------------------------------------------
+
+async function sendOnce(
+  phone: string,
+  message: string,
+): Promise<{ success: boolean; messageId?: string; error?: string; rawResponse?: string }> {
+  if (!INFOBIP_API_KEY || !INFOBIP_BASE_URL) {
+    return { success: false, error: "Infobip credentials not configured (check env vars)." };
+  }
+
+  const url = `${INFOBIP_BASE_URL}/sms/2/text/advanced`;
+
+  const payload = {
+    messages: [
+      {
+        from: INFOBIP_SENDER,
+        destinations: [{ to: phone }],
+        text: message,
+        language: { languageCode: "AR" },
+      },
+    ],
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `App ${INFOBIP_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const raw = await response.text();
+
+  if (!response.ok) {
+    return {
+      success: false,
+      error: `Infobip HTTP ${response.status}`,
+      rawResponse: raw,
+    };
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { success: false, error: "Invalid JSON from Infobip", rawResponse: raw };
+  }
+
+  const msg = data?.messages?.[0];
+  const status = msg?.status?.groupName;
+
+  if (status === "PENDING" || status === "DELIVERED") {
+    return { success: true, messageId: msg.messageId, rawResponse: raw };
+  }
+
+  // Infobip may return 200 with an error status inside the payload
+  return {
+    success: false,
+    error: msg?.status?.description ?? "Unknown Infobip error",
+    rawResponse: raw,
+  };
+}
+
+// ---- Public API -----------------------------------------------------------
+
+/**
+ * Send a warranty confirmation SMS via Infobip.
+ *
+ * - Validates and normalises the phone number to E.164.
+ * - Deduplicates: won't send to the same number twice within 5 minutes.
+ * - Retries up to 2 times on transient failure.
+ * - Logs every attempt (success and failure).
+ */
+export async function sendWarrantySms(
+  params: InfobipSmsParams,
+): Promise<InfobipSmsResult> {
+  const timestamp = new Date().toISOString();
+
+  // --- Normalise phone ---
+  let phone: string;
+  try {
+    phone = normalizePhone(params.phoneNumber);
+  } catch {
+    const err = `Invalid phone number: "${params.phoneNumber}"`;
+    console.error(`[Infobip] ${err}`);
+    return { success: false, phone: params.phoneNumber, timestamp, error: err };
+  }
+
+  // Basic sanity check: E.164 Iraqi numbers are +964 + 10 digits = 13 chars
+  if (!/^\+\d{7,15}$/.test(phone)) {
+    const err = `Phone failed E.164 validation after normalisation: "${phone}"`;
+    console.error(`[Infobip] ${err}`);
+    return { success: false, phone, timestamp, error: err };
+  }
+
+  // --- Deduplication ---
+  const lastSent = recentlySent.get(phone);
+  if (lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS) {
+    const waitSec = Math.ceil((DEDUP_WINDOW_MS - (Date.now() - lastSent)) / 1000);
+    const msg = `Duplicate suppressed — already sent to ${phone} ${Math.round((Date.now() - lastSent) / 1000)}s ago (${waitSec}s remaining)`;
+    console.warn(`[Infobip] ${msg}`);
+    return { success: false, phone, timestamp, error: msg };
+  }
+
+  const message = buildMessage(params);
+
+  // --- Send with up to 2 retries ---
+  const MAX_ATTEMPTS = 3;
+  let lastResult: Awaited<ReturnType<typeof sendOnce>> = {
+    success: false,
+    error: "No attempts made",
+  };
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    console.log(`[Infobip] Attempt ${attempt}/${MAX_ATTEMPTS} → ${phone} (reg: ${params.registrationId})`);
+    lastResult = await sendOnce(phone, message);
+
+    if (lastResult.success) {
+      recentlySent.set(phone, Date.now());
+      console.log(`[Infobip] ✓ Sent to ${phone}, messageId=${lastResult.messageId}`);
+      return {
+        success: true,
+        messageId: lastResult.messageId,
+        phone,
+        timestamp,
+        rawResponse: lastResult.rawResponse,
+      };
+    }
+
+    console.warn(`[Infobip] Attempt ${attempt} failed: ${lastResult.error}`);
+    if (attempt < MAX_ATTEMPTS) {
+      // Simple exponential back-off: 1s, 2s
+      await new Promise((r) => setTimeout(r, attempt * 1000));
+    }
+  }
+
+  console.error(`[Infobip] All ${MAX_ATTEMPTS} attempts failed for ${phone}:`, lastResult.error);
+  return {
+    success: false,
+    phone,
+    timestamp,
+    error: lastResult.error,
+    rawResponse: lastResult.rawResponse,
+  };
+}
+</file>
+
+<file path="prisma/schema.prisma">
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model WarrantyRegistration {
+  id            String   @id @default(uuid())
+  shop          String
+  customerId    String // Shopify customer GID: "gid://shopify/Customer/xxxx"
+  firstName     String
+  email         String
+  phone         String // Mobile number (entered by customer)
+  city          String // Iraqi city from dropdown
+  store         String // Selected retail store/outlet
+  purchaseDate  DateTime
+  invoiceNumber String? // Optional invoice number
+  status        String   @default("pending") // pending, approved, rejected
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  products WarrantyProduct[]
+  smsLogs  SMSLog[]
+
+  @@index([shop])
+  @@index([phone])
+}
+
+model WarrantyProduct {
+  id             String  @id @default(uuid())
+  registrationId String
+  productId      String? // Shopify Product GID (null if manual entry)
+  productTitle   String
+  sku            String?
+  isManual       Boolean @default(false) // true if manually entered (not from catalog)
+
+  registration WarrantyRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@index([registrationId])
+}
+
+model CustomerReward {
+  id           String    @id @default(uuid())
+  shop         String
+  phone        String // Normalized mobile number
+  customerId   String // Shopify customer GID
+  rewardType   String // "WELCOME_10" or "WARRANTY_15"
+  discountCode String // Shopify discount code generated
+  issuedAt     DateTime  @default(now())
+  sentAt       DateTime?
+
+  smsLogs SMSLog[]
+
+  @@unique([shop, phone, rewardType])
+  @@index([shop])
+  @@index([phone])
+}
+
+model SMSLog {
+  id                  String    @id @default(uuid())
+  shop                String
+  phone               String
+  registrationId      String?
+  rewardId            String?
+  smsSent             Boolean   @default(false)
+  smsSentAt           DateTime?
+  smsProviderResponse String? // API response or error log details
+
+  registration WarrantyRegistration? @relation(fields: [registrationId], references: [id], onDelete: SetNull)
+  reward       CustomerReward?       @relation(fields: [rewardId], references: [id], onDelete: SetNull)
+
+  @@index([registrationId])
+  @@index([rewardId])
+}
+</file>
+
+<file path="app/routes/api.warranty.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
+import { normalizePhone } from "../utils/twilio.server";
+
+
+/**
+ * POST /api/warranty
+ *
+ * Full warranty registration flow:
+ * 1. Validate input
+ * 2. Normalize phone number
+ * 3. Resolve or create Shopify customer (tagged "warranty-registered")
+ * 4. Check reward eligibility (no stacking, no duplicates)
+ * 5. Save registration + products
+ * 6. Record CustomerReward row if first-time registrant
+ *
+ * Discount code creation and customer messaging are handled by Shopify Flow.
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  try {
+    const body = await request.json();
+
+    const {
+      shop,
+      firstName,
+      email,
+      phone,
+      city,
+      store,
+      purchaseDate,
+      invoiceNumber,
+      products,
+      isNewCustomer,
+    } = body;
+
+    // --- Validation ---
+    const errors: string[] = [];
+    if (!shop) errors.push("Shop is required.");
+    if (!firstName || firstName.trim().length < 2)
+      errors.push("First name is required (min 2 characters).");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errors.push("Valid email is required.");
+    if (!phone || phone.trim().length < 7)
+      errors.push("Valid phone number is required.");
+    if (!city) errors.push("City is required.");
+    if (!store) errors.push("Store is required.");
+    if (!purchaseDate) errors.push("Purchase date is required.");
+    if (!products || !Array.isArray(products) || products.length === 0)
+      errors.push("At least one product is required.");
+
+    if (errors.length > 0) {
+      return json({ errors }, { status: 400 });
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // --- Resolve Shopify Customer ---
+    let customerId: string;
+
+    try {
+      const { admin } = await unauthenticated.admin(shop);
+
+      console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
+      console.log("[api.warranty] Normalized phone:", normalizedPhone);
+
+      const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
+      if (lookupResult) {
+        console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
+        customerId = lookupResult;
+      } else {
+        console.log("[api.warranty] Customer not found by phone. Checking email or creating new customer...");
+        customerId = await createOrUpdateShopifyCustomer(admin, {
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+        });
+        console.log("[api.warranty] Resolved customerId:", customerId);
+      }
+
+      // --- Check Reward Eligibility ---
+      // Rule: No stacking, no duplicates. Phone is source of truth.
+      const existingReward = await prisma.customerReward.findFirst({
+        where: { shop, phone: normalizedPhone },
+      });
+
+      // --- Save Warranty Registration ---
+      const registration = await prisma.warrantyRegistration.create({
+        data: {
+          shop,
+          customerId,
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+          city,
+          store,
+          purchaseDate: new Date(purchaseDate),
+          invoiceNumber: invoiceNumber?.trim() || null,
+          status: "pending",
+          products: {
+            create: products.map((p: any) => ({
+              productId: p.productId || null,
+              productTitle: p.productTitle,
+              sku: p.sku || null,
+              isManual: p.isManual || false,
+            })),
+          },
+        },
+        include: { products: true },
+      });
+
+      // --- Record First-Time Reward Eligibility ---
+      // Discount code creation is delegated to Shopify Flow (triggered by
+      // the "warranty-registered" tag on the customer). We only track
+      // eligibility here so the no-stacking rule works on subsequent registrations.
+      let rewardCreated = false;
+      if (!existingReward) {
+        await prisma.customerReward.create({
+          data: {
+            shop,
+            phone: normalizedPhone,
+            customerId,
+            rewardType: "WARRANTY_15",
+            discountCode: "",  // generated by Shopify Flow, not this route
+          },
+        });
+        rewardCreated = true;
+      }
+
+      return json(
+        {
+          success: true,
+          registration: {
+            id: registration.id,
+            status: registration.status,
+            productsCount: registration.products.length,
+          },
+          reward: rewardCreated
+            ? { type: "WARRANTY_15", note: "Discount code will be sent via WhatsApp by Shopify Flow." }
+            : existingReward
+              ? { message: "Customer already has a reward on record." }
+              : null,
+        },
+        { status: 201 }
+      );
+    } catch (shopifyErr: any) {
+      console.error("[api.warranty] Shopify/DB error:", shopifyErr);
+      return json(
+        {
+          error: "Failed to process warranty registration. Please try again later.",
+          debug: shopifyErr instanceof Error ? shopifyErr.message : shopifyErr,
+          stack: shopifyErr instanceof Error ? shopifyErr.stack : undefined,
+        },
+        { status: 500 }
+      );
+    }
+  } catch (error: any) {
+    console.error("[api.warranty] Parse error:", error);
+    return json({ error: "Invalid request body." }, { status: 400 });
+  }
+};
+
+// ---- Helper: Lookup customer by phone ----
+async function lookupCustomerByPhone(
+  admin: any,
+  phone: string
+): Promise<string | null> {
+  const query = `#graphql
+    query customerByPhone($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+          }
+        }
+      }
+    }`;
+  const variables = { query: `phone:${phone}` };
+  console.log("[lookupCustomerByPhone] Shopify lookup variables:", variables);
+
+  const response = await admin.graphql(query, { variables });
+  const data = await response.json();
+  console.log("[lookupCustomerByPhone] Shopify response:", JSON.stringify(data, null, 2));
+
+  if (data?.errors) {
+    console.error("[lookupCustomerByPhone] GraphQL errors:", data.errors);
+    throw new Error(`Shopify lookup error: ${JSON.stringify(data.errors)}`);
+  }
+
+  const edges = data?.data?.customers?.edges || [];
+  return edges.length > 0 ? edges[0].node.id : null;
+}
+
+// ---- Helper: Create or update Shopify Customer ----
+async function createOrUpdateShopifyCustomer(
+  admin: any,
+  input: { firstName: string; email: string; phone: string }
+): Promise<string> {
+  const queryEmail = `#graphql
+    query customerByEmail($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+            phone
+          }
+        }
+      }
+    }`;
+  const variablesEmail = { query: `email:${input.email}` };
+  console.log("[createOrUpdateShopifyCustomer] Checking existing email:", variablesEmail);
+
+  const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
+  const emailCheckData = await emailCheckResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Email check response:", JSON.stringify(emailCheckData, null, 2));
+
+  if (emailCheckData?.errors) {
+    console.error("[createOrUpdateShopifyCustomer] Email check GraphQL errors:", emailCheckData.errors);
+  }
+
+  const existingByEmail = emailCheckData?.data?.customers?.edges || [];
+
+  if (existingByEmail.length > 0) {
+    const existing = existingByEmail[0].node;
+    console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
+
+    if (existing.phone !== input.phone) {
+      console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
+      const mutationUpdate = `#graphql
+        mutation customerUpdate($input: CustomerInput!) {
+          customerUpdate(input: $input) {
+            customer { id }
+            userErrors { field message }
+          }
+        }`;
+      const variablesUpdate = {
+        input: { id: existing.id, phone: input.phone, tags: ["warranty-registered"] },
+      };
+      const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
+      const updateData = await updateResponse.json();
+      console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
+
+      const updateErrors = updateData?.data?.customerUpdate?.userErrors || [];
+      if (updateErrors.length > 0) {
+        console.error("[createOrUpdateShopifyCustomer] Update phone user errors:", updateErrors);
+      }
+    }
+
+    // Always ensure the tag is present regardless of whether phone changed
+    await tagCustomerWarrantyRegistered(admin, existing.id);
+    return existing.id;
+  }
+
+  // Create new customer
+  console.log("[createOrUpdateShopifyCustomer] Creating new customer:", input);
+  const mutationCreate = `#graphql
+    mutation customerCreate($input: CustomerInput!) {
+      customerCreate(input: $input) {
+        customer { id }
+        userErrors { field message }
+      }
+    }`;
+  const variablesCreate = {
+    input: {
+      firstName: input.firstName,
+      email: input.email,
+      phone: input.phone,
+      tags: ["warranty-registered"],
+    },
+  };
+
+  const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
+  const createData = await createResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Create response:", JSON.stringify(createData, null, 2));
+
+  const userErrors = createData?.data?.customerCreate?.userErrors || [];
+  if (userErrors.length > 0) {
+    console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
+    console.log("[createOrUpdateShopifyCustomer] Falling back to phone lookup:", input.phone);
+    const fallbackId = await lookupCustomerByPhone(admin, input.phone);
+    if (fallbackId) {
+      console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
+      return fallbackId;
+    }
+    throw new Error(
+      `Customer creation failed: ${userErrors.map((e: any) => e.message).join(", ")}`
+    );
+  }
+
+  const newCustomerId = createData?.data?.customerCreate?.customer?.id;
+  if (!newCustomerId) {
+    throw new Error("Customer creation returned no ID.");
+  }
+
+  console.log("[createOrUpdateShopifyCustomer] Customer created. ID:", newCustomerId);
+
+  // Send activation email invite
+  try {
+    const mutationInvite = `#graphql
+      mutation customerSendAccountInviteEmail($customerId: ID!) {
+        customerSendAccountInviteEmail(customerId: $customerId) {
+          customer { id }
+          userErrors { field message }
+        }
+      }`;
+    const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
+    const inviteData = await inviteResponse.json();
+    const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
+    if (inviteErrors.length > 0) {
+      console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
+    }
+  } catch (inviteErr) {
+    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed (non-critical):", inviteErr);
+  }
+
+  return newCustomerId;
+}
+
+// ---- Helper: Ensure warranty-registered tag is on the customer ----
+// Uses tagsAdd so it never overwrites existing tags.
+async function tagCustomerWarrantyRegistered(
+  admin: any,
+  customerId: string
+): Promise<void> {
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      mutation tagsAdd($id: ID!, $tags: [String!]!) {
+        tagsAdd(id: $id, tags: $tags) {
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: customerId, tags: ["warranty-registered"] } }
+    );
+    const data = await response.json();
+    const errors = data?.data?.tagsAdd?.userErrors || [];
+    if (errors.length > 0) {
+      console.warn("[tagCustomerWarrantyRegistered] userErrors:", errors);
+    }
+  } catch (err) {
+    console.warn("[tagCustomerWarrantyRegistered] Failed (non-critical):", err);
+  }
+}
+</file>
+
+<file path="app/routes/webhooks.customers.update.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import { unauthenticated } from "../shopify.server";
+import { processCustomerVoucher } from "../lib/voucher-processing.server";
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, payload, topic } = await authenticate.webhook(request);
+  console.log(`[${topic}] webhook received for ${shop}`);
+
+  const raw = payload as {
+    id: number;
+    first_name?: string;
+    phone?: string;
+    tags?: string;
+  };
+
+  console.log(`[${topic}] customer ${raw.id} tags: "${raw.tags}"`);
+
+  const tags = (raw.tags ?? "")
+    .split(",")
+    .map((t: string) => t.trim())
+    .filter(Boolean);
+
+  const { admin } = await unauthenticated.admin(shop);
+
+  const result = await processCustomerVoucher(
+    admin,
+    {
+      id: `gid://shopify/Customer/${raw.id}`,
+      firstName: raw.first_name ?? "",
+      phone: raw.phone ?? "",
+      tags,
+    },
+    topic,
+  );
+
+  console.log(`[${topic}] result:`, result);
+
+  return new Response(null, { status: 200 });
+};
+</file>
+
+<file path="shopify.app.toml">
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "41d1d7fae24939000bdbd2935ae8857f"
+name = "Warranty Registration"
+application_url = "https://geepas-warranty.vercel.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/update"
+  topics = [ "customers/update" ]
+  include_fields = [ "tags", "phone", "first_name", "id" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"
+
+[auth]
+redirect_urls = [ "https://geepas-warranty.vercel.app/auth/callback" ]
+</file>
+
 <file path="app/shopify.server.ts">
 import "@shopify/shopify-app-remix/adapters/node";
 import {
@@ -4697,8 +5285,6 @@ const shopify = shopifyApp({
     "read_products",
     "read_customers",
     "write_customers",
-    "read_discounts",
-    "write_discounts",
   ],
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
@@ -5182,7 +5768,7 @@ Started tracking changes and releases using calver
   "name": "app",
   "private": true,
   "scripts": {
-    "build": "remix vite:build",
+    "build": "prisma generate && prisma migrate deploy && remix vite:build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",

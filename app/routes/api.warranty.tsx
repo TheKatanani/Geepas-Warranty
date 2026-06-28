@@ -169,7 +169,10 @@ async function lookupCustomerByPhone(
         }
       }
     }`;
-  const variables = { query: `phone:${phone}` };
+  // Wrap in quotes so Shopify treats it as a literal string, not a boolean
+  // expression. Without quotes, the + in +9647... is parsed as a boolean OR
+  // operator and the lookup returns no results even when the customer exists.
+  const variables = { query: `phone:"${phone}"` };
   console.log("[lookupCustomerByPhone] Shopify lookup variables:", variables);
 
   const response = await admin.graphql(query, { variables });

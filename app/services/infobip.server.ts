@@ -116,34 +116,59 @@ async function sendOnce(
     ],
   };
 
-  // 4-second hard timeout so we never exceed Shopify's 5s webhook window.
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  // Timeout via Promise.race — intentionally avoids AbortController.
+  //
+  // Why not AbortController: aborting a fetch after the Response object is
+  // returned (but while the body is still streaming) throws
+  // "Cannot cancel a stream that already has a reader" and crashes the process.
+  // clearTimeout in a finally block does NOT prevent this because the abort
+  // callback can already be queued in the JS task queue by the time finally runs.
+  //
+  // With Promise.race the fetch runs signal-free. If the timeout wins, the fetch
+  // continues silently in the background and resolves/rejects with no listener —
+  // the .catch(()=>{}) below suppresses that unhandled-rejection path.
+  //
+  // 8 s is generous: this code is now called from issueRewardAndNotify (a direct
+  // server-side call), not from a Shopify webhook, so the old 5 s constraint is gone.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error("TIMEOUT")), 8000);
+  });
+
+  const fetchPromise = fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `App ${INFOBIP_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+    // no signal — avoids the stream-reader conflict on abort
+  });
+  // If the timeout wins the race and fetchPromise later rejects, there will be no
+  // awaiting listener. Attach a no-op catch so Node never sees an unhandled rejection.
+  fetchPromise.catch(() => {});
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `App ${INFOBIP_API_KEY}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    response = await Promise.race([fetchPromise, timeoutPromise]);
+    clearTimeout(timeoutHandle!);
   } catch (err: any) {
-    clearTimeout(timer);
-    const isTimeout = err?.name === "AbortError";
+    clearTimeout(timeoutHandle!);
     return {
       success: false,
-      error: isTimeout ? "Infobip request timed out after 4s" : `Network error: ${err?.message}`,
+      error: err?.message === "TIMEOUT"
+        ? "Infobip timed out after 8s"
+        : `Network error: ${err?.message ?? String(err)}`,
     };
-  } finally {
-    clearTimeout(timer);
   }
 
-  const raw = await response.text();
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch (bodyErr: any) {
+    return { success: false, error: `Failed to read Infobip response body: ${bodyErr?.message}` };
+  }
 
   if (!response.ok) {
     return {
@@ -185,8 +210,9 @@ async function sendOnce(
  *
  * - Validates and normalises the phone number to E.164.
  * - Deduplicates via SMSLog DB query (survives restarts and multi-instance deploys).
- * - Single attempt with 4s timeout so the webhook response fits Shopify's 5s window.
- *   Shopify's own retry logic handles transient failures — we don't retry ourselves.
+ * - Single attempt with 8s timeout (no Shopify webhook constraint — called directly
+ *   from issueRewardAndNotify server-side). Transient failures are logged and surfaced
+ *   to the caller; the warranty registration always succeeds regardless.
  * - Returns isDuplicate=true when dedup fires so the caller can still clean up the tag.
  */
 export async function sendWarrantySms(
@@ -237,8 +263,8 @@ export async function sendWarrantySms(
 
   const message = buildMessage(params);
 
-  // Single attempt — Shopify retries the webhook on failure, no need to retry here.
-  // The 4s timeout in sendOnce ensures we return before Shopify's 5s window closes.
+  // Single attempt — called directly from issueRewardAndNotify, not a webhook.
+  // sendOnce has an 8s timeout; failures are logged and returned to the caller.
   console.log(`[Infobip] Sending → ${phone} (reg: ${params.registrationId})`);
   const result = await sendOnce(phone, message);
 

@@ -3,6 +3,7 @@ import { json } from "@remix-run/node";
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/twilio.server";
+import { issueRewardAndNotify } from "../services/reward.server";
 
 
 /**
@@ -14,9 +15,7 @@ import { normalizePhone } from "../utils/twilio.server";
  * 3. Resolve or create Shopify customer (tagged "warranty-registered")
  * 4. Check reward eligibility (no stacking, no duplicates)
  * 5. Save registration + products
- * 6. Record CustomerReward row if first-time registrant
- *
- * Discount code creation and customer messaging are handled by Shopify Flow.
+ * 6. Issue WARRANTY15 discount code + send SMS via reward.server.ts (non-fatal)
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
@@ -83,9 +82,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.log("[api.warranty] Resolved customerId:", customerId);
       }
 
-      // Check whether a reward already exists for this phone so we can log it.
-      // CustomerReward creation itself happens in webhooks.customers.update
-      // once Shopify Flow has generated the discount code.
+      // Check whether a reward already exists for this phone — skip re-issue if so.
       const existingReward = await prisma.customerReward.findFirst({
         where: { shop, phone: normalizedPhone },
       });
@@ -115,14 +112,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         include: { products: true },
       });
 
-      // CustomerReward is NOT created here. The discount code does not exist
-      // yet — Shopify Flow creates it after detecting the "warranty-registered"
-      // tag. The CUSTOMERS_UPDATE webhook will create the CustomerReward record
-      // once Flow has embedded the code in the "voucher-ready:TIER:CODE" tag.
+      // Issue discount code + send SMS directly (no Shopify Flow dependency).
+      // Non-fatal: a reward failure must never block the warranty registration.
       if (existingReward) {
-        console.log(`[api.warranty] Customer ${normalizedPhone} already has a reward on record — skipping re-issue`);
+        console.log(
+          `[reward] Customer ${normalizedPhone} already has a reward on record — skipping re-issue`,
+        );
       } else {
-        console.log(`[api.warranty] Warranty ${registration.id} saved. Awaiting Shopify Flow to create discount code.`);
+        const productName =
+          registration.products?.[0]?.productTitle ?? "Geepas product";
+
+        issueRewardAndNotify({
+          shop,
+          customerId,
+          phone: normalizedPhone,
+          customerName: firstName.trim(),
+          productName,
+          registrationId: registration.id,
+          registrationDate: registration.createdAt,
+          rewardType: "WARRANTY15",
+          discountPercentage: 15,
+        }).then((rewardResult) => {
+          if (!rewardResult.success) {
+            console.error(
+              `[reward] issueRewardAndNotify failed for registration ${registration.id}:`,
+              rewardResult.error,
+            );
+          } else {
+            console.log(
+              `[reward] Reward issued — code=${rewardResult.discountCode} messageId=${rewardResult.messageId}`,
+            );
+          }
+        }).catch((err) => {
+          console.error(
+            `[reward] issueRewardAndNotify threw for registration ${registration.id}:`,
+            err,
+          );
+        });
       }
 
       return json(

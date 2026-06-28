@@ -9,16 +9,16 @@
  *   INFOBIP_SENDER    — sender ID, e.g. LUFIAN
  */
 
+import prisma from "../db.server";
 import { normalizePhone } from "../utils/twilio.server";
 
 const INFOBIP_API_KEY = process.env.INFOBIP_API_KEY ?? "";
 const INFOBIP_BASE_URL = (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, "");
 const INFOBIP_SENDER = process.env.INFOBIP_SENDER ?? "LUFIAN";
 
-// Deduplication window — don't send the same phone number a second SMS
-// within this many milliseconds (5 minutes).
+// Deduplication window — checked against SMSLog in DB, not in-memory.
+// Survives process restarts and works across multiple server instances.
 const DEDUP_WINDOW_MS = 5 * 60 * 1000;
-const recentlySent = new Map<string, number>(); // phone → timestamp
 
 // ---- Types ----------------------------------------------------------------
 
@@ -32,6 +32,7 @@ export interface InfobipSmsParams {
   registrationDate: Date;
   voucherExpiryDays?: number; // defaults to 30
   lang?: "ar" | "en";        // defaults to "ar"
+  shop?: string;             // required for DB dedup check
 }
 
 export interface InfobipSmsResult {
@@ -115,15 +116,32 @@ async function sendOnce(
     ],
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `App ${INFOBIP_API_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  // 4-second hard timeout so we never exceed Shopify's 5s webhook window.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `App ${INFOBIP_API_KEY}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timer);
+    const isTimeout = err?.name === "AbortError";
+    return {
+      success: false,
+      error: isTimeout ? "Infobip request timed out after 4s" : `Network error: ${err?.message}`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
 
   const raw = await response.text();
 
@@ -145,14 +163,17 @@ async function sendOnce(
   const msg = data?.messages?.[0];
   const status = msg?.status?.groupName;
 
-  if (status === "PENDING" || status === "DELIVERED") {
+  // ACCEPTED = queued for delivery (most common immediate response)
+  // PENDING  = awaiting delivery confirmation
+  // DELIVERED = confirmed delivered
+  if (status === "ACCEPTED" || status === "PENDING" || status === "DELIVERED") {
     return { success: true, messageId: msg.messageId, rawResponse: raw };
   }
 
   // Infobip may return 200 with an error status inside the payload
   return {
     success: false,
-    error: msg?.status?.description ?? "Unknown Infobip error",
+    error: msg?.status?.description ?? `Unexpected Infobip status: ${status}`,
     rawResponse: raw,
   };
 }
@@ -163,13 +184,14 @@ async function sendOnce(
  * Send a warranty confirmation SMS via Infobip.
  *
  * - Validates and normalises the phone number to E.164.
- * - Deduplicates: won't send to the same number twice within 5 minutes.
- * - Retries up to 2 times on transient failure.
- * - Logs every attempt (success and failure).
+ * - Deduplicates via SMSLog DB query (survives restarts and multi-instance deploys).
+ * - Single attempt with 4s timeout so the webhook response fits Shopify's 5s window.
+ *   Shopify's own retry logic handles transient failures — we don't retry ourselves.
+ * - Returns isDuplicate=true when dedup fires so the caller can still clean up the tag.
  */
 export async function sendWarrantySms(
   params: InfobipSmsParams,
-): Promise<InfobipSmsResult> {
+): Promise<InfobipSmsResult & { isDuplicate?: boolean }> {
   const timestamp = new Date().toISOString();
 
   // --- Normalise phone ---
@@ -189,53 +211,54 @@ export async function sendWarrantySms(
     return { success: false, phone, timestamp, error: err };
   }
 
-  // --- Deduplication ---
-  const lastSent = recentlySent.get(phone);
-  if (lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS) {
-    const waitSec = Math.ceil((DEDUP_WINDOW_MS - (Date.now() - lastSent)) / 1000);
-    const msg = `Duplicate suppressed — already sent to ${phone} ${Math.round((Date.now() - lastSent) / 1000)}s ago (${waitSec}s remaining)`;
-    console.warn(`[Infobip] ${msg}`);
-    return { success: false, phone, timestamp, error: msg };
+  // --- DB-backed deduplication ---
+  // Checks SMSLog so state is shared across all server instances and survives restarts.
+  try {
+    const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
+    const recent = await prisma.sMSLog.findFirst({
+      where: {
+        phone,
+        smsSent: true,
+        smsSentAt: { gte: cutoff },
+      },
+      orderBy: { smsSentAt: "desc" },
+    });
+    if (recent) {
+      const agoSec = Math.round((Date.now() - recent.smsSentAt!.getTime()) / 1000);
+      const waitSec = Math.ceil((DEDUP_WINDOW_MS - agoSec * 1000) / 1000);
+      const msg = `Duplicate suppressed — already sent to ${phone} ${agoSec}s ago (${waitSec}s remaining in window)`;
+      console.warn(`[Infobip] ${msg}`);
+      return { success: false, isDuplicate: true, phone, timestamp, error: msg };
+    }
+  } catch (dedupErr) {
+    // Non-fatal: if DB check fails, proceed and let the SMS send rather than block it.
+    console.warn(`[Infobip] Dedup DB check failed (proceeding):`, dedupErr);
   }
 
   const message = buildMessage(params);
 
-  // --- Send with up to 2 retries ---
-  const MAX_ATTEMPTS = 3;
-  let lastResult: Awaited<ReturnType<typeof sendOnce>> = {
-    success: false,
-    error: "No attempts made",
-  };
+  // Single attempt — Shopify retries the webhook on failure, no need to retry here.
+  // The 4s timeout in sendOnce ensures we return before Shopify's 5s window closes.
+  console.log(`[Infobip] Sending → ${phone} (reg: ${params.registrationId})`);
+  const result = await sendOnce(phone, message);
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    console.log(`[Infobip] Attempt ${attempt}/${MAX_ATTEMPTS} → ${phone} (reg: ${params.registrationId})`);
-    lastResult = await sendOnce(phone, message);
-
-    if (lastResult.success) {
-      recentlySent.set(phone, Date.now());
-      console.log(`[Infobip] ✓ Sent to ${phone}, messageId=${lastResult.messageId}`);
-      return {
-        success: true,
-        messageId: lastResult.messageId,
-        phone,
-        timestamp,
-        rawResponse: lastResult.rawResponse,
-      };
-    }
-
-    console.warn(`[Infobip] Attempt ${attempt} failed: ${lastResult.error}`);
-    if (attempt < MAX_ATTEMPTS) {
-      // Simple exponential back-off: 1s, 2s
-      await new Promise((r) => setTimeout(r, attempt * 1000));
-    }
+  if (result.success) {
+    console.log(`[Infobip] ✓ Sent to ${phone}, messageId=${result.messageId}`);
+    return {
+      success: true,
+      messageId: result.messageId,
+      phone,
+      timestamp,
+      rawResponse: result.rawResponse,
+    };
   }
 
-  console.error(`[Infobip] All ${MAX_ATTEMPTS} attempts failed for ${phone}:`, lastResult.error);
+  console.error(`[Infobip] Send failed for ${phone}:`, result.error);
   return {
     success: false,
     phone,
     timestamp,
-    error: lastResult.error,
-    rawResponse: lastResult.rawResponse,
+    error: result.error,
+    rawResponse: result.rawResponse,
   };
 }

@@ -81,25 +81,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     registrationDate,
     voucherExpiryDays: 30,
     lang: "ar",
+    shop,
   });
 
-  // Persist SMS log
-  try {
-    await prisma.sMSLog.create({
-      data: {
-        shop,
-        phone: normalizedPhone,
-        registrationId: registration?.id ?? null,
-        smsSent: result.success,
-        smsSentAt: result.success ? new Date(result.timestamp) : null,
-        smsProviderResponse: result.rawResponse ?? result.error ?? null,
-      },
-    });
-  } catch (dbErr) {
-    console.error(`[${topic}] SMSLog write failed (non-fatal):`, dbErr);
+  // Persist SMS log — skip for duplicates (already logged on the original send)
+  if (!result.isDuplicate) {
+    try {
+      await prisma.sMSLog.create({
+        data: {
+          shop,
+          phone: normalizedPhone,
+          registrationId: registration?.id ?? null,
+          smsSent: result.success,
+          smsSentAt: result.success ? new Date(result.timestamp) : null,
+          smsProviderResponse: result.rawResponse ?? result.error ?? null,
+        },
+      });
+    } catch (dbErr) {
+      console.error(`[${topic}] SMSLog write failed (non-fatal):`, dbErr);
+    }
   }
 
-  if (!result.success) {
+  if (!result.success && !result.isDuplicate) {
     console.error(`[${topic}] SMS failed for ${normalizedPhone}:`, result.error);
     // Return 200 — Shopify won't retry on app-level errors and we've logged it.
     // The voucher-ready tag is intentionally left on the customer so a manual
@@ -107,38 +110,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(null, { status: 200 });
   }
 
-  console.log(`[${topic}] SMS sent. messageId=${result.messageId}`);
+  if (result.isDuplicate) {
+    console.warn(`[${topic}] Dedup fired for ${normalizedPhone} — removing tag to prevent accumulation`);
+  } else {
+    console.log(`[${topic}] SMS sent. messageId=${result.messageId}`);
 
-  // Create CustomerReward now that the discount code exists.
-  // This is intentionally done after SMS succeeds — if SMS fails we leave
-  // the tag in place so the send can be retried without issuing a duplicate reward.
-  try {
-    const [, tier, code] = voucherTag.split(":");
-    await prisma.customerReward.upsert({
-      where: {
-        shop_phone_rewardType: {
+    // Create CustomerReward on genuine success only (not dedup — it already exists).
+    try {
+      const [, tier, code] = voucherTag.split(":");
+      await prisma.customerReward.upsert({
+        where: {
+          shop_phone_rewardType: {
+            shop,
+            phone: normalizedPhone,
+            rewardType: tier,
+          },
+        },
+        update: {
+          discountCode: code,
+          sentAt: new Date(),
+        },
+        create: {
           shop,
           phone: normalizedPhone,
+          customerId: `gid://shopify/Customer/${raw.id}`,
           rewardType: tier,
+          discountCode: code,
+          sentAt: new Date(),
         },
-      },
-      update: {
-        discountCode: code,
-        sentAt: new Date(),
-      },
-      create: {
-        shop,
-        phone: normalizedPhone,
-        customerId: `gid://shopify/Customer/${raw.id}`,
-        rewardType: tier,
-        discountCode: code,
-        sentAt: new Date(),
-      },
-    });
-    console.log(`[${topic}] CustomerReward upserted for ${normalizedPhone} tier=${tier} code=${code}`);
-  } catch (rewardErr) {
-    // Non-fatal — customer received their SMS and code. Log and continue.
-    console.error(`[${topic}] CustomerReward upsert failed (non-fatal):`, rewardErr);
+      });
+      console.log(`[${topic}] CustomerReward upserted for ${normalizedPhone} tier=${tier} code=${code}`);
+    } catch (rewardErr) {
+      // Non-fatal — customer received their SMS and code. Log and continue.
+      console.error(`[${topic}] CustomerReward upsert failed (non-fatal):`, rewardErr);
+    }
   }
 
   // Remove the voucher-ready tag so this webhook doesn't re-trigger on the

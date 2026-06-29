@@ -25,8 +25,9 @@ export interface IssueRewardParams {
   productName: string;
   registrationId: string;
   registrationDate: Date;
-  rewardType: string;        // e.g. "WARRANTY15"
-  discountPercentage: number; // e.g. 15
+  rewardType: string;        // e.g. "WARRANTY15", "WELCOME10", "NEXT15", "SECOND15"
+  discountPercentage: number; // e.g. 15, 10
+  expiryDays?: number;       // days until discount expires; default 60
 }
 
 export interface IssueRewardResult {
@@ -78,6 +79,7 @@ export async function issueRewardAndNotify(
     registrationDate,
     rewardType,
     discountPercentage,
+    expiryDays = 60,
   } = params;
 
   // Extract the legacy numeric ID from the Shopify GID so the code matches
@@ -98,13 +100,16 @@ export async function issueRewardAndNotify(
 
     const percentage = discountPercentage / 100; // Shopify expects 0–1
     const humanTitle = `${rewardType} ${discountPercentage}% discount for customer ${legacyId}`;
+    const startsAt = new Date().toISOString();
+    const endsAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
 
     const response = await admin.graphql(DISCOUNT_CREATE_MUTATION, {
       variables: {
         basicCodeDiscount: {
           title: humanTitle,
           code: discountCode,
-          startsAt: new Date().toISOString(),
+          startsAt,
+          endsAt,
           customerSelection: {
             customers: {
               add: [customerId],
@@ -116,6 +121,7 @@ export async function issueRewardAndNotify(
           },
           appliesOncePerCustomer: true,
           usageLimit: 1,
+          // Hard-set: these vouchers never combine with other discounts.
           combinesWith: {
             orderDiscounts: false,
             productDiscounts: false,
@@ -175,7 +181,7 @@ export async function issueRewardAndNotify(
     warrantyDays: 365,
     registrationId,
     registrationDate,
-    voucherExpiryDays: 30,
+    voucherExpiryDays: expiryDays,
     lang: "ar",
     shop,
   });

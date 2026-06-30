@@ -69,6 +69,7 @@ app/routes.ts
 app/routes/_index/route.tsx
 app/routes/_index/styles.module.css
 app/routes/api.customer-lookup.tsx
+app/routes/api.flow-send-sms.tsx
 app/routes/api.products.tsx
 app/routes/api.reward.record-welcome.tsx
 app/routes/api.send-warranty-sms.tsx
@@ -84,13 +85,17 @@ app/routes/cron.process-vouchers.tsx
 app/routes/public.warranty-register.tsx
 app/routes/webhooks.app.scopes_update.tsx
 app/routes/webhooks.app.uninstalled.tsx
+app/routes/webhooks.customers.create.tsx
 app/routes/webhooks.customers.update.tsx
+app/routes/webhooks.orders.paid.tsx
 app/services/infobip.server.ts
+app/services/reward.server.ts
 app/shopify.server.ts
 app/utils/twilio.server.ts
 CHANGELOG.md
 Dockerfile
 env.d.ts
+GEEPAS_WARRANTY_SMS_GUIDE.md
 package.json
 pnpm-workspace.yaml
 prisma/migrations/20260622131420_init_postgres/migration.sql
@@ -363,31 +368,6 @@ shopify app init --template=https://github.com/Shopify/shopify-app-template-remi
 - [ ] I have made changes to the `README.md` file and other related documentation, if applicable
 - [ ] I have added an entry to `CHANGELOG.md`
 - [ ] I'm aware I need to create a new release when this PR is merged
-</file>
-
-<file path=".github/workflows/cla.yml">
-name: Contributor License Agreement (CLA)
-
-on:
-  pull_request_target:
-    types: [opened, synchronize]
-  issue_comment:
-    types: [created]
-
-jobs:
-  cla:
-    runs-on: ubuntu-latest
-    if: |
-      (github.event.issue.pull_request
-        && !github.event.issue.pull_request.merged_at
-        && contains(github.event.comment.body, 'signed')
-      )
-      || (github.event.pull_request && !github.event.pull_request.merged)
-    steps:
-      - uses: Shopify/shopify-cla-action@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          cla-token: ${{ secrets.CLA_TOKEN }}
 </file>
 
 <file path=".prettierignore">
@@ -864,50 +844,105 @@ CMD ["npm", "run", "docker-start"]
 }
 </file>
 
-<file path=".github/workflows/remove-labels-on-activity.yml">
-name: Remove Waiting Labels
-on:
-  issue_comment:
-    types: [created]
-  workflow_dispatch:
-jobs:
-  remove-labels-on-activity:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
-      - uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1.2.0
-        if: contains(github.event.issue.labels.*.name, 'Waiting for Response')
-        with:
-          labels: |
-            Waiting for Response
+<file path="vite.config.ts">
+import { vitePlugin as remix } from "@remix-run/dev";
+import { installGlobals } from "@remix-run/node";
+import { defineConfig, type UserConfig } from "vite";
+import tsconfigPaths from "vite-tsconfig-paths";
+
+installGlobals({ nativeFetch: true });
+
+// Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
+// Replace the HOST env var with SHOPIFY_APP_URL so that it doesn't break the remix server. The CLI will eventually
+// stop passing in HOST, so we can remove this workaround after the next major release.
+if (
+  process.env.HOST &&
+  (!process.env.SHOPIFY_APP_URL ||
+    process.env.SHOPIFY_APP_URL === process.env.HOST)
+) {
+  process.env.SHOPIFY_APP_URL = process.env.HOST;
+  delete process.env.HOST;
+}
+
+const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
+  .hostname;
+
+let hmrConfig;
+if (host === "localhost") {
+  hmrConfig = {
+    protocol: "ws",
+    host: "localhost",
+    port: 64999,
+    clientPort: 64999,
+  };
+} else {
+  hmrConfig = {
+    protocol: "wss",
+    host: host,
+    port: parseInt(process.env.FRONTEND_PORT!) || 8002,
+    clientPort: 443,
+  };
+}
+
+export default defineConfig({
+  server: {
+    allowedHosts: [host],
+    cors: {
+      preflightContinue: true,
+    },
+    port: Number(process.env.PORT || 3000),
+    hmr: hmrConfig,
+    fs: {
+      // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
+      allow: ["app", "node_modules"],
+    },
+  },
+  plugins: [
+    remix({
+      ignoredRouteFiles: ["**/.*"],
+      future: {
+        v3_fetcherPersist: true,
+        v3_relativeSplatPath: true,
+        v3_throwAbortReason: true,
+        v3_lazyRouteDiscovery: true,
+        v3_singleFetch: false,
+        v3_routeConfig: true,
+      },
+    }),
+    tsconfigPaths(),
+  ],
+  build: {
+    assetsInlineLimit: 0,
+  },
+  optimizeDeps: {
+    include: ["@shopify/app-bridge-react", "@shopify/polaris"],
+  },
+}) satisfies UserConfig;
 </file>
 
-<file path=".gitignore">
-node_modules
-.DS_Store
+<file path=".github/workflows/cla.yml">
+name: Contributor License Agreement (CLA)
 
-/.cache
-/build
-/app/build
-/public/build/
-/public/_dev
-/app/public/build
-/prisma/dev.sqlite
-/prisma/dev.sqlite-journal
-database.sqlite
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
 
-.env
-.env.*
-
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-/extensions/*/dist
-
-# Ignore shopify files created during app dev
-.shopify/*
-.shopify.lock
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.issue.pull_request
+        && !github.event.issue.pull_request.merged_at
+        && contains(github.event.comment.body, 'signed')
+      )
+      || (github.event.pull_request && !github.event.pull_request.merged)
+    steps:
+      - uses: Shopify/shopify-cla-action@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cla-token: ${{ secrets.CLA_TOKEN }}
 </file>
 
 <file path=".graphqlrc.ts">
@@ -1156,6 +1191,212 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       error: error?.message || "Internal server error",
     });
   }
+};
+</file>
+
+<file path="app/routes/api.flow-send-sms.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import prisma from "../db.server";
+import { sendWarrantySms } from "../services/infobip.server";
+import { normalizePhone } from "../utils/twilio.server";
+
+/**
+ * POST /api/flow-send-sms
+ *
+ * Called directly by Shopify Flow via an HTTP action.
+ * Replaces the customers/update webhook approach — Flow does NOT fire
+ * customers/update for tag changes it makes itself, so Flow must call us directly.
+ *
+ * Expected JSON body:
+ * {
+ *   phone:        "{{ customer.phone }}",
+ *   customerName: "{{ customer.firstName }}",
+ *   discountCode: "WARRANTY15-{{ customer.legacyResourceId }}",
+ *   rewardType:   "WARRANTY15",
+ *   shop:         "ae53cd-2.myshopify.com",
+ *   customerId:   "{{ customer.legacyResourceId }}"  // optional but recommended
+ * }
+ *
+ * Security: requires X-Flow-Secret header === FLOW_SHARED_SECRET env var.
+ * Returns 500 on SMS failure so Flow marks the run as failed and allows retry
+ * from the Flow run page.
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const LOG = "[flow-send-sms]";
+
+  // --- 1. Method guard ---
+  if (request.method !== "POST") {
+    console.warn(`${LOG} 405 — method=${request.method}`);
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  // --- 2. Shared-secret authentication ---
+  const expectedSecret = process.env.FLOW_SHARED_SECRET ?? "";
+  const receivedSecret = request.headers.get("X-Flow-Secret") ?? "";
+
+  if (!expectedSecret || receivedSecret !== expectedSecret) {
+    console.warn(
+      `${LOG} 401 — secret mismatch (header present: ${Boolean(receivedSecret)}, env configured: ${Boolean(expectedSecret)})`,
+    );
+    return json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // --- 3. Parse body ---
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    console.warn(`${LOG} 400 — invalid JSON body`);
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const { phone, customerName, discountCode, rewardType, shop, customerId } = body as {
+    phone?: string;
+    customerName?: string;
+    discountCode?: string;
+    rewardType?: string;
+    shop?: string;
+    customerId?: string;
+  };
+
+  // --- 4. Required-field validation ---
+  const missing = (["phone", "discountCode", "rewardType"] as const).filter(
+    (k) => !body[k],
+  );
+  if (missing.length > 0) {
+    console.warn(`${LOG} 400 — missing fields: ${missing.join(", ")}`);
+    return json({ error: `Missing required fields: ${missing.join(", ")}` }, { status: 400 });
+  }
+
+  const shopDomain = (shop as string) ?? "unknown";
+  console.log(
+    `${LOG} received — shop=${shopDomain} phone=${phone} code=${discountCode} rewardType=${rewardType}`,
+  );
+
+  // --- 5. Normalize phone ---
+  const normalizedPhone = normalizePhone(phone!);
+  console.log(`${LOG} normalized phone: ${phone} → ${normalizedPhone}`);
+
+  // --- 6. Look up warranty registration for SMS content (non-fatal if missing) ---
+  let productName = "Geepas product";
+  let registrationId: string | undefined;
+  let registrationDate: Date = new Date();
+
+  try {
+    const registration = await prisma.warrantyRegistration.findFirst({
+      where: { phone: normalizedPhone },
+      orderBy: { createdAt: "desc" },
+      include: { products: true },
+    });
+
+    if (registration) {
+      productName = registration.products?.[0]?.productTitle ?? "Geepas product";
+      registrationId = registration.id;
+      registrationDate = registration.createdAt;
+      console.log(`${LOG} found registration id=${registration.id} product="${productName}"`);
+    } else {
+      console.warn(
+        `${LOG} no warranty registration found for ${normalizedPhone} — using fallbacks`,
+      );
+    }
+  } catch (lookupErr) {
+    console.error(`${LOG} registration lookup failed (non-fatal):`, lookupErr);
+  }
+
+  // --- 7. Send SMS ---
+  console.log(`${LOG} calling sendWarrantySms → ${normalizedPhone} code=${discountCode}`);
+
+  const result = await sendWarrantySms({
+    phoneNumber: normalizedPhone,
+    customerName: (customerName as string) ?? "Customer",
+    voucherCode: discountCode as string,
+    productName,
+    warrantyDays: 365,
+    registrationId: registrationId ?? `flow-${Date.now()}`,
+    registrationDate,
+    voucherExpiryDays: 30,
+    lang: "ar",
+    shop: shopDomain,
+  });
+
+  // --- 8. Persist SMSLog (skip on dedup — already logged) ---
+  if (!result.isDuplicate) {
+    try {
+      await prisma.sMSLog.create({
+        data: {
+          shop: shopDomain,
+          phone: normalizedPhone,
+          registrationId: registrationId ?? null,
+          smsSent: result.success,
+          smsSentAt: result.success ? new Date(result.timestamp) : null,
+          smsProviderResponse: result.rawResponse ?? result.error ?? null,
+        },
+      });
+    } catch (logErr) {
+      console.error(`${LOG} SMSLog write failed (non-fatal):`, logErr);
+    }
+  }
+
+  // --- 9. On failure: return 500 so Flow marks the run as failed and retries ---
+  if (!result.success && !result.isDuplicate) {
+    console.error(`${LOG} SMS failed for ${normalizedPhone}:`, result.error);
+    return json({ success: false, error: result.error }, { status: 500 });
+  }
+
+  if (result.isDuplicate) {
+    console.warn(`${LOG} dedup fired — SMS already sent to ${normalizedPhone} recently`);
+  } else {
+    console.log(`${LOG} SMS sent — messageId=${result.messageId}`);
+  }
+
+  // --- 10. Upsert CustomerReward on genuine success (not dedup — record already exists) ---
+  if (!result.isDuplicate) {
+    // Derive Shopify customer GID: prefer explicit customerId field,
+    // fall back to extracting the legacy ID appended to the discount code.
+    let customerGid: string;
+    if (customerId) {
+      customerGid = `gid://shopify/Customer/${customerId}`;
+    } else {
+      // discountCode format: "WARRANTY15-<legacyId>"
+      const legacyId = (discountCode as string).split("-").at(-1);
+      customerGid = legacyId
+        ? `gid://shopify/Customer/${legacyId}`
+        : `gid://shopify/Customer/unknown`;
+    }
+
+    try {
+      await prisma.customerReward.upsert({
+        where: {
+          shop_phone_rewardType: {
+            shop: shopDomain,
+            phone: normalizedPhone,
+            rewardType: rewardType as string,
+          },
+        },
+        update: {
+          discountCode: discountCode as string,
+          sentAt: new Date(),
+        },
+        create: {
+          shop: shopDomain,
+          phone: normalizedPhone,
+          customerId: customerGid,
+          rewardType: rewardType as string,
+          discountCode: discountCode as string,
+          sentAt: new Date(),
+        },
+      });
+      console.log(
+        `${LOG} CustomerReward upserted — phone=${normalizedPhone} rewardType=${rewardType}`,
+      );
+    } catch (rewardErr) {
+      // Non-fatal — customer already received their SMS and code.
+      console.error(`${LOG} CustomerReward upsert failed (non-fatal):`, rewardErr);
+    }
+  }
+
+  return json({ success: true, messageId: result.messageId ?? null });
 };
 </file>
 
@@ -2095,66 +2336,246 @@ export default function WarrantiesPage() {
 }
 </file>
 
-<file path="app/routes/cron.process-vouchers.tsx">
-import { json } from "@remix-run/node";
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { unauthenticated } from "../shopify.server";
-import {
-  processCustomerVoucher,
-  type VoucherCustomer,
-} from "../lib/voucher-processing.server";
+<file path="app/routes/webhooks.customers.create.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import { normalizePhone } from "../utils/twilio.server";
+import { issueRewardAndNotify } from "../services/reward.server";
 
-// This app serves a single store.
-const SHOP = "ae53cd-2.myshopify.com";
+const LOG = "[voucher2]";
 
-// Vercel invokes this route on the cron schedule defined in vercel.json.
-// It queries for customers tagged "voucher-ready:*", processes each one,
-// and returns a JSON summary.
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await unauthenticated.admin(SHOP);
+/**
+ * CUSTOMERS_CREATE webhook — fires when a new customer record is created in Shopify.
+ *
+ * Voucher 2: first-time storefront signup → 10% welcome discount, valid 60 days.
+ *
+ * Guard: customers created by our own warranty flow already have the tag
+ * "warranty-registered" on creation. Skip those — they get their voucher via
+ * the WARRANTY15 path in api.warranty.tsx, not here.
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, payload, topic } = await authenticate.webhook(request);
+  console.log(`${LOG} ${topic} received for shop=${shop}`);
 
-  // Fetch all customers that have any "voucher-ready:*" tag.
-  // Shopify customer search supports tag: prefix queries.
-  const response = await admin.graphql(
-    `#graphql
-    query voucherReadyCustomers {
-      customers(first: 50, query: "tag:voucher-ready*") {
-        edges {
-          node {
-            id
-            firstName
-            phone
-            tags
-          }
-        }
+  const raw = payload as {
+    id: number;
+    first_name?: string;
+    phone?: string;
+    tags?: string;
+  };
+
+  // --- Guard: skip app-created customers (warranty-registered tag present at creation) ---
+  const tags = (raw.tags ?? "")
+    .split(",")
+    .map((t: string) => t.trim())
+    .filter(Boolean);
+
+  if (tags.includes("warranty-registered")) {
+    console.log(
+      `${LOG} skipped (app-created) — customer ${raw.id} already has warranty-registered tag`,
+    );
+    return new Response(null, { status: 200 });
+  }
+
+  // --- Guard: no phone means we cannot send SMS ---
+  const rawPhone = raw.phone ?? "";
+  if (!rawPhone) {
+    console.log(`${LOG} no phone — customer ${raw.id} skipped`);
+    return new Response(null, { status: 200 });
+  }
+
+  const normalizedPhone = normalizePhone(rawPhone);
+  const customerName = raw.first_name ?? "Customer";
+  const customerId = `gid://shopify/Customer/${raw.id}`;
+
+  console.log(
+    `${LOG} eligible — customer ${raw.id} phone=${normalizedPhone} name="${customerName}"`,
+  );
+
+  // Fire-and-forget: errors are logged but never surface to Shopify (always 200).
+  issueRewardAndNotify({
+    shop,
+    customerId,
+    phone: normalizedPhone,
+    customerName,
+    productName: "Geepas",
+    registrationId: `welcome-${raw.id}`,
+    registrationDate: new Date(),
+    rewardType: "WELCOME10",
+    discountPercentage: 10,
+    expiryDays: 60,
+  }).then((result) => {
+    if (result.success) {
+      console.log(
+        `${LOG} reward issued — code=${result.discountCode} messageId=${result.messageId}`,
+      );
+    } else {
+      console.error(
+        `${LOG} issueRewardAndNotify failed for customer ${raw.id}:`,
+        result.error,
+      );
+    }
+  }).catch((err) => {
+    console.error(`${LOG} issueRewardAndNotify threw for customer ${raw.id}:`, err);
+  });
+
+  return new Response(null, { status: 200 });
+};
+</file>
+
+<file path="app/routes/webhooks.orders.paid.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import { normalizePhone } from "../utils/twilio.server";
+import { issueRewardAndNotify } from "../services/reward.server";
+
+/**
+ * ORDERS_PAID webhook — fires when payment is captured on an order.
+ *
+ * Voucher 1 [voucher1]: order subtotal >= 100,000 IQD → 15% discount, valid 60 days.
+ * Voucher 3 [voucher3]: customer's first-ever paid order → 15% next-order discount.
+ *
+ * Both can fire on the same order. Each path is independently wrapped so a failure
+ * in one never prevents the other from running.
+ *
+ * Payload field notes (Shopify REST webhook format):
+ *   subtotal_price       — string, order subtotal after discounts in shop currency (IQD).
+ *                          Does NOT include shipping or taxes.
+ *   currency             — string, always "IQD" for this store.
+ *   customer.orders_count — integer, total number of orders for this customer INCLUDING
+ *                          the current one. Value of 1 means this is the first paid order.
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, payload, topic } = await authenticate.webhook(request);
+  console.log(`[orders/paid] ${topic} received for shop=${shop}`);
+
+  const order = payload as {
+    id: number;
+    order_number?: number;
+    subtotal_price?: string;
+    currency?: string;
+    created_at?: string;
+    customer?: {
+      id: number;
+      first_name?: string;
+      phone?: string;
+      orders_count?: number;
+    };
+    line_items?: Array<{ title?: string }>;
+  };
+
+  // --- Extract order fields ---
+  const subtotal = parseFloat(order.subtotal_price ?? "0");
+  const currency = order.currency ?? "IQD";
+  const orderId = order.id;
+  const orderNumber = order.order_number ?? orderId;
+  const orderDate = order.created_at ? new Date(order.created_at) : new Date();
+  const productName = order.line_items?.[0]?.title ?? "Geepas product";
+
+  // --- Extract customer fields ---
+  const customer = order.customer;
+  if (!customer) {
+    console.log(`[orders/paid] order ${orderNumber} has no customer — skipping`);
+    return new Response(null, { status: 200 });
+  }
+
+  const rawPhone = customer.phone ?? "";
+  const customerName = customer.first_name ?? "Customer";
+  const customerId = `gid://shopify/Customer/${customer.id}`;
+  const ordersCount = customer.orders_count ?? 0;
+
+  console.log(
+    `[orders/paid] order=${orderNumber} subtotal=${subtotal} ${currency} ` +
+    `customer=${customer.id} ordersCount=${ordersCount} phone=${rawPhone || "(none)"}`,
+  );
+
+  // --- Guard: no phone means we cannot send any SMS ---
+  if (!rawPhone) {
+    console.log(`[orders/paid] customer ${customer.id} has no phone — skipping all vouchers`);
+    return new Response(null, { status: 200 });
+  }
+
+  const normalizedPhone = normalizePhone(rawPhone);
+
+  // ---- Voucher 1: subtotal >= 100,000 IQD → NEXT15 (15% off next order) --------
+
+  if (subtotal >= 100000) {
+    console.log(
+      `[voucher1] subtotal ${subtotal} ${currency} >= 100000 — issuing NEXT15 for customer ${customer.id}`,
+    );
+    issueRewardAndNotify({
+      shop,
+      customerId,
+      phone: normalizedPhone,
+      customerName,
+      productName,
+      registrationId: `order-${orderId}-next15`,
+      registrationDate: orderDate,
+      rewardType: "NEXT15",
+      discountPercentage: 15,
+      expiryDays: 60,
+    }).then((result) => {
+      if (result.success) {
+        console.log(
+          `[voucher1] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
+        );
+      } else {
+        console.error(
+          `[voucher1] issueRewardAndNotify failed for order ${orderNumber}:`,
+          result.error,
+        );
       }
-    }`,
-  );
+    }).catch((err) => {
+      console.error(`[voucher1] issueRewardAndNotify threw for order ${orderNumber}:`, err);
+    });
+  } else {
+    console.log(
+      `[voucher1] subtotal ${subtotal} ${currency} < 100000 — skipping NEXT15`,
+    );
+  }
 
-  const data = await response.json();
-  const edges: any[] = data?.data?.customers?.edges ?? [];
+  // ---- Voucher 3: first paid order (orders_count === 1) → SECOND15 --------------
+  // orders_count on the customer snapshot inside the orders/paid payload reflects
+  // the count at the moment of order payment, including the current order.
+  // orders_count === 1 therefore means this IS the customer's first paid order.
 
-  console.log(`[cron.process-vouchers] Found ${edges.length} candidate customer(s)`);
+  if (ordersCount === 1) {
+    console.log(
+      `[voucher3] first order for customer ${customer.id} — issuing SECOND15`,
+    );
+    issueRewardAndNotify({
+      shop,
+      customerId,
+      phone: normalizedPhone,
+      customerName,
+      productName,
+      registrationId: `order-${orderId}-second15`,
+      registrationDate: orderDate,
+      rewardType: "SECOND15",
+      discountPercentage: 15,
+      expiryDays: 60,
+    }).then((result) => {
+      if (result.success) {
+        console.log(
+          `[voucher3] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
+        );
+      } else {
+        console.error(
+          `[voucher3] issueRewardAndNotify failed for order ${orderNumber}:`,
+          result.error,
+        );
+      }
+    }).catch((err) => {
+      console.error(`[voucher3] issueRewardAndNotify threw for order ${orderNumber}:`, err);
+    });
+  } else {
+    console.log(
+      `[voucher3] ordersCount=${ordersCount} — not first order, skipping SECOND15`,
+    );
+  }
 
-  const results = await Promise.all(
-    edges.map(({ node }: any) => {
-      const customer: VoucherCustomer = {
-        id: node.id,
-        firstName: node.firstName ?? "",
-        phone: node.phone ?? "",
-        tags: (node.tags as string[]) ?? [],
-      };
-      return processCustomerVoucher(admin, customer, "cron.process-vouchers");
-    }),
-  );
-
-  const sent = results.filter((r) => r.status === "sent").length;
-  const skipped = results.filter((r) => r.status === "skipped").length;
-  const errors = results.filter((r) => r.status === "error").length;
-
-  console.log(`[cron.process-vouchers] Done — sent: ${sent}, skipped: ${skipped}, errors: ${errors}`);
-
-  return json({ sent, skipped, errors, total: results.length });
+  // Always return 200 immediately — reward work runs in the background.
+  return new Response(null, { status: 200 });
 };
 </file>
 
@@ -2569,27 +2990,31 @@ main()
 * @shop/dev_experience
 </file>
 
-<file path=".github/workflows/close-waiting-for-response-issues.yml">
-name: Close Waiting for Response Issues
-on:
-  schedule:
-    - cron: "30 1 * * *"
-  workflow_dispatch:
-jobs:
-  check-need-info:
-    runs-on: ubuntu-latest
-    steps:
-      - name: close-issues
-        uses: actions-cool/issues-helper@45d75b6cf72bf4f254be6230cb887ad002702491 # v3.6.3
-        with:
-          actions: "close-issues"
-          token: ${{ secrets.GITHUB_TOKEN }}
-          labels: "Waiting for Response"
-          inactive-day: 14
-          body: |
-            We are closing this issue because we did not hear back regarding additional details we needed to resolve this issue. If the issue persists and you are able to provide the missing clarification we need, you can respond here or create a new issue.
+<file path=".gitignore">
+node_modules
+.DS_Store
 
-            We appreciate your understanding as we try to manage our number of open issues.
+/.cache
+/build
+/app/build
+/public/build/
+/public/_dev
+/app/public/build
+/prisma/dev.sqlite
+/prisma/dev.sqlite-journal
+database.sqlite
+
+.env
+.env.*
+
+package-lock.json
+yarn.lock
+
+/extensions/*/dist
+
+# Ignore shopify files created during app dev
+.shopify/*
+.shopify.lock
 </file>
 
 <file path="app/lib/voucher-processing.server.ts">
@@ -2687,6 +3112,562 @@ export async function processCustomerVoucher(
 }
 </file>
 
+<file path="app/routes/cron.process-vouchers.tsx">
+import { json } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+
+/**
+ * DEPRECATED — no longer the active voucher delivery path.
+ *
+ * Voucher SMS is now sent immediately via the CUSTOMERS_UPDATE webhook in
+ * webhooks.customers.update.tsx, which fires when Shopify Flow adds the
+ * "voucher-ready:<TIER>:<CODE>" tag to a customer.
+ *
+ * This route is kept so that vercel.json doesn't 404, but it is a no-op.
+ * The vercel.json cron entry can be removed once you confirm the webhook
+ * path is working in production.
+ */
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  console.log("[cron.process-vouchers] DEPRECATED — SMS is now delivered by webhooks.customers.update");
+  return json({
+    deprecated: true,
+    message: "Voucher SMS is now delivered immediately via the CUSTOMERS_UPDATE webhook. This cron is a no-op.",
+  });
+};
+</file>
+
+<file path="app/services/reward.server.ts">
+/**
+ * Reward engine — creates a Shopify discount code and sends the SMS in one shot.
+ *
+ * Replaces the Shopify Flow dependency: Flow's "Send HTTP request" action is
+ * unavailable on the store's current plan, so the app now handles the full
+ * discount + SMS pipeline itself.
+ *
+ * Design:
+ *   1. discountCodeBasicCreate  — Admin GraphQL (requires write_discounts scope)
+ *   2. sendWarrantySms          — reused from app/services/infobip.server.ts
+ *   3. CustomerReward upsert    — same upsert the webhook route uses
+ */
+
+import { unauthenticated } from "../shopify.server";
+import prisma from "../db.server";
+import { sendWarrantySms } from "./infobip.server";
+
+// ---- Types ------------------------------------------------------------------
+
+export interface IssueRewardParams {
+  shop: string;
+  customerId: string;        // Shopify GID e.g. "gid://shopify/Customer/12345"
+  phone: string;             // already E.164-normalized
+  customerName: string;
+  productName: string;
+  registrationId: string;
+  registrationDate: Date;
+  rewardType: string;        // e.g. "WARRANTY15", "WELCOME10", "NEXT15", "SECOND15"
+  discountPercentage: number; // e.g. 15, 10
+  expiryDays?: number;       // days until discount expires; default 60
+}
+
+export interface IssueRewardResult {
+  success: boolean;
+  discountCode?: string;
+  messageId?: string;
+  error?: string;
+}
+
+// ---- GraphQL mutation -------------------------------------------------------
+
+const DISCOUNT_CREATE_MUTATION = `#graphql
+  mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+    discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+      codeDiscountNode {
+        id
+        codeDiscount {
+          ... on DiscountCodeBasic {
+            codes(first: 1) {
+              edges {
+                node { code }
+              }
+            }
+          }
+        }
+      }
+      userErrors {
+        field
+        message
+        code
+      }
+    }
+  }
+`;
+
+// ---- Main export ------------------------------------------------------------
+
+export async function issueRewardAndNotify(
+  params: IssueRewardParams,
+): Promise<IssueRewardResult> {
+  const LOG = "[reward]";
+  const {
+    shop,
+    customerId,
+    phone,
+    customerName,
+    productName,
+    registrationId,
+    registrationDate,
+    rewardType,
+    discountPercentage,
+    expiryDays = 60,
+  } = params;
+
+  // Extract the legacy numeric ID from the Shopify GID so the code matches
+  // the format Flow used: "WARRANTY15-12345"
+  const legacyId = customerId.split("/").at(-1) ?? customerId;
+  const discountCode = `${rewardType}-${legacyId}`;
+
+  console.log(
+    `${LOG} issueRewardAndNotify — shop=${shop} phone=${phone} code=${discountCode} rewardType=${rewardType}`,
+  );
+
+  // ---- 1. Create Shopify discount code ----------------------------------------
+
+  let resolvedCode = discountCode; // may be overwritten if the code already exists
+
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+
+    const percentage = discountPercentage / 100; // Shopify expects 0–1
+    const humanTitle = `${rewardType} ${discountPercentage}% discount for customer ${legacyId}`;
+    const startsAt = new Date().toISOString();
+    const endsAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString();
+
+    const response = await admin.graphql(DISCOUNT_CREATE_MUTATION, {
+      variables: {
+        basicCodeDiscount: {
+          title: humanTitle,
+          code: discountCode,
+          startsAt,
+          endsAt,
+          customerSelection: {
+            customers: {
+              add: [customerId],
+            },
+          },
+          customerGets: {
+            value: { percentage },
+            items: { all: true },
+          },
+          appliesOncePerCustomer: true,
+          usageLimit: 1,
+          // Hard-set: these vouchers never combine with other discounts.
+          combinesWith: {
+            orderDiscounts: false,
+            productDiscounts: false,
+            shippingDiscounts: false,
+          },
+        },
+      },
+    });
+
+    const data = await response.json();
+    const userErrors: Array<{ field: string[]; message: string; code: string }> =
+      data?.data?.discountCodeBasicCreate?.userErrors ?? [];
+
+    if (userErrors.length > 0) {
+      // TAKEN means this exact code was already created (e.g. a previous attempt
+      // succeeded but the request timed out before we logged it). Treat as success
+      // and proceed with the same code — the customer is entitled to it.
+      const isTaken = userErrors.some(
+        (e) => e.code === "TAKEN" || e.message.toLowerCase().includes("already been taken"),
+      );
+
+      if (isTaken) {
+        console.warn(
+          `${LOG} discount code "${discountCode}" already exists — reusing it`,
+        );
+        // resolvedCode stays as discountCode
+      } else {
+        const msg = userErrors.map((e) => `${e.field?.join(".")}: ${e.message}`).join("; ");
+        console.error(`${LOG} discountCodeBasicCreate userErrors:`, msg);
+        return { success: false, error: `Discount creation failed: ${msg}` };
+      }
+    } else {
+      // Confirm the code that Shopify stored (should equal discountCode, but trust the response)
+      const storedCode =
+        data?.data?.discountCodeBasicCreate?.codeDiscountNode?.codeDiscount?.codes
+          ?.edges?.[0]?.node?.code;
+      if (storedCode) {
+        resolvedCode = storedCode;
+      }
+      console.log(`${LOG} discount created — code="${resolvedCode}"`);
+    }
+  } catch (discountErr: any) {
+    console.error(`${LOG} discount creation threw:`, discountErr);
+    return {
+      success: false,
+      error: `Discount creation error: ${discountErr?.message ?? discountErr}`,
+    };
+  }
+
+  // ---- 2. Send SMS (reusing existing service — timeout, DB dedup, ACCEPTED) ------
+
+  const smsResult = await sendWarrantySms({
+    phoneNumber: phone,
+    customerName,
+    voucherCode: resolvedCode,
+    productName,
+    warrantyDays: 365,
+    registrationId,
+    registrationDate,
+    voucherExpiryDays: expiryDays,
+    lang: "ar",
+    shop,
+  });
+
+  // ---- 3. Persist SMSLog (skip on dedup — already logged on the original send) ---
+
+  if (!smsResult.isDuplicate) {
+    try {
+      await prisma.sMSLog.create({
+        data: {
+          shop,
+          phone,
+          registrationId: registrationId ?? null,
+          smsSent: smsResult.success,
+          smsSentAt: smsResult.success ? new Date(smsResult.timestamp) : null,
+          smsProviderResponse: smsResult.rawResponse ?? smsResult.error ?? null,
+        },
+      });
+    } catch (logErr) {
+      console.error(`${LOG} SMSLog write failed (non-fatal):`, logErr);
+    }
+  }
+
+  if (!smsResult.success && !smsResult.isDuplicate) {
+    console.error(`${LOG} SMS failed for ${phone}:`, smsResult.error);
+    // Discount already exists — report partial success so the caller can surface
+    // the failure in logs without rolling back the discount.
+    return {
+      success: false,
+      discountCode: resolvedCode,
+      error: `Discount created but SMS failed: ${smsResult.error}`,
+    };
+  }
+
+  if (smsResult.isDuplicate) {
+    console.warn(`${LOG} dedup fired — SMS already sent to ${phone} recently`);
+  } else {
+    console.log(`${LOG} SMS sent — messageId=${smsResult.messageId}`);
+  }
+
+  // ---- 4. Upsert CustomerReward (same upsert the webhook used) -----------------
+
+  if (!smsResult.isDuplicate) {
+    try {
+      await prisma.customerReward.upsert({
+        where: {
+          shop_phone_rewardType: { shop, phone, rewardType },
+        },
+        update: {
+          discountCode: resolvedCode,
+          sentAt: new Date(),
+        },
+        create: {
+          shop,
+          phone,
+          customerId,
+          rewardType,
+          discountCode: resolvedCode,
+          sentAt: new Date(),
+        },
+      });
+      console.log(
+        `${LOG} CustomerReward upserted — phone=${phone} rewardType=${rewardType}`,
+      );
+    } catch (rewardErr) {
+      // Non-fatal — customer has their code and received the SMS.
+      console.error(`${LOG} CustomerReward upsert failed (non-fatal):`, rewardErr);
+    }
+  }
+
+  return {
+    success: true,
+    discountCode: resolvedCode,
+    messageId: smsResult.messageId,
+  };
+}
+</file>
+
+<file path="GEEPAS_WARRANTY_SMS_GUIDE.md">
+# Geepas Warranty App — SMS Delivery Guide
+
+## Architecture Overview
+
+```
+Customer fills warranty form
+        │
+        ▼
+POST /api/warranty                          PHASE 1 — REGISTRATION
+  • Creates/finds Shopify customer
+  • Adds tag: warranty-registered
+  • Saves WarrantyRegistration to DB
+  • Does NOT create CustomerReward yet
+    (discount code doesn't exist yet)
+  • Returns success to customer
+        │
+        ▼
+Shopify Flow triggers on customer creation  PHASE 2 — FLOW
+  Condition: tags contains "warranty-registered"
+  ├─ TRUE  → discountCodeBasicCreate (WARRANTY15)
+  │          → tagsAdd: voucher-ready:WARRANTY15:WARRANTY15-{id}
+  └─ FALSE → discountCodeBasicCreate (WELCOME10)
+             → tagsAdd: voucher-ready:WELCOME10:WELCOME10-{id}
+        │
+        ▼
+Shopify fires CUSTOMERS_UPDATE webhook      PHASE 3 — DELIVERY
+        │
+        ▼
+webhooks.customers.update.tsx
+  • Detects voucher-ready:<TIER>:<CODE> tag
+  • Queries DB for latest registration (phone, product name)
+  • Calls sendWarrantySms() via Infobip
+  • Writes result to SMSLog
+  • ✅ Creates CustomerReward (code now exists)
+  • Removes voucher-ready tag (prevents re-fire)
+```
+
+### When each record is created
+
+| Record              | Created in         | Reason                                      |
+|---------------------|--------------------|---------------------------------------------|
+| `WarrantyRegistration` | `/api/warranty`  | Immediately on form submit                  |
+| `CustomerReward`    | webhook            | Only after Flow generates the discount code |
+| `SMSLog`            | webhook            | After every SMS attempt (success or failure)|
+
+---
+
+## Voucher Tag Format
+
+Shopify Flow embeds the discount code directly in the tag:
+
+```
+voucher-ready:WARRANTY15:WARRANTY15-12345678
+              ─────┬────  ────────────┬──────
+                   │                  └─ discount code
+                   └─ tier (maps to SMS template)
+```
+
+Supported tiers:
+
+| Tier       | Trigger                          | Discount |
+|------------|----------------------------------|----------|
+| WARRANTY15 | Customer has `warranty-registered` tag | 15% off  |
+| WELCOME10  | New customer without warranty tag | 10% off  |
+| NEXT15     | (Future) Second purchase          | 15% off  |
+| SECOND15   | (Future) Repeat buyer             | 15% off  |
+
+---
+
+## Environment Variables
+
+Set these in Vercel → Project → Settings → Environment Variables:
+
+| Variable            | Description                                      | Example                            |
+|---------------------|--------------------------------------------------|------------------------------------|
+| `INFOBIP_API_KEY`   | Infobip API key                                  | `abc123...`                        |
+| `INFOBIP_BASE_URL`  | Infobip base URL (from your Infobip dashboard)   | `https://8pmk3.api.infobip.com`    |
+| `INFOBIP_SENDER`    | Sender ID registered with Infobip                | `LUFIAN`                           |
+| `SHOPIFY_API_KEY`   | Shopify app API key                              | from Partners dashboard            |
+| `SHOPIFY_API_SECRET`| Shopify app secret (used to verify webhooks)     | from Partners dashboard            |
+| `SHOPIFY_APP_URL`   | Your Vercel deployment URL                       | `https://your-app.vercel.app`      |
+| `DATABASE_URL`      | Postgres connection string (pooled)              | from Supabase/Neon                 |
+| `DIRECT_URL`        | Postgres direct connection string                | from Supabase/Neon                 |
+
+---
+
+## Webhook Registration
+
+The `CUSTOMERS_UPDATE` webhook must be registered with Shopify. The Shopify App Remix framework
+handles this automatically on app install/re-auth. To verify it's registered:
+
+1. Go to **Shopify Partners** → your app → **Webhooks**
+2. Confirm `customers/update` points to:
+   `https://your-app.vercel.app/webhooks/customers/update`
+
+If it's missing, re-install the app on your store or trigger auth by visiting the app in the Shopify admin.
+
+---
+
+## Shopify Flow Setup
+
+### Step 1 — Trigger
+- **Trigger:** Customer created
+
+### Step 2 — Condition
+- **Condition:** Customer tags **is equal to** `warranty-registered`
+
+### Step 3a — True branch (WARRANTY15)
+1. **Send Admin API request** → `discountCodeBasicCreate` mutation
+   - Code: `WARRANTY15-{{ customer.legacyResourceId }}`
+   - Value: 15% percentage discount
+   - Usage limit: 1 per customer
+2. **Add customer tags:**
+   `voucher-ready:WARRANTY15:WARRANTY15-{{ customer.legacyResourceId }}`
+
+### Step 3b — False branch (WELCOME10)
+1. **Send Admin API request** → `discountCodeBasicCreate` mutation
+   - Code: `WELCOME10-{{ customer.legacyResourceId }}`
+   - Value: 10% percentage discount
+   - Usage limit: 1 per customer
+2. **Add customer tags:**
+   `voucher-ready:WELCOME10:WELCOME10-{{ customer.legacyResourceId }}`
+
+---
+
+## SMS Message Format
+
+Messages are sent in Arabic by default. Example output:
+
+```
+مرحباً Ahmed،
+
+شكراً لتسجيل ضمان Geepas Air Fryer
+رقم الضمان: a1b2c3d4-...
+مدة الضمان: 365 يوم
+تاريخ التسجيل: ١٥ يناير ٢٠٢٦
+كود الخصم الخاص بك: WARRANTY15-12345678
+صلاحيته: 30 يوم
+
+استخدم الكود عند الشراء
+```
+
+English fallback is available by passing `lang: "en"` to `sendWarrantySms()`.
+
+---
+
+## Database: SMSLog Table
+
+Every SMS attempt (success or failure) is written to `SMSLog`:
+
+| Column                | Description                                      |
+|-----------------------|--------------------------------------------------|
+| `id`                  | UUID                                             |
+| `shop`                | Shopify shop domain                              |
+| `phone`               | Normalized E.164 phone                           |
+| `registrationId`      | FK to WarrantyRegistration (nullable)            |
+| `smsSent`             | `true` if Infobip accepted the message           |
+| `smsSentAt`           | Timestamp of successful send                     |
+| `smsProviderResponse` | Raw Infobip response or error string             |
+
+Query failed sends:
+```sql
+SELECT * FROM "SMSLog" WHERE "smsSent" = false ORDER BY "smsSentAt" DESC;
+```
+
+---
+
+## Phone Number Normalization
+
+`normalizePhone()` in `app/utils/twilio.server.ts` converts any Iraqi format to E.164:
+
+| Input          | Output          |
+|----------------|-----------------|
+| `07701234567`  | `+9647701234567`|
+| `7701234567`   | `+9647701234567`|
+| `+9647701234567`| `+9647701234567`|
+| `009647701234567`| `+9647701234567`|
+
+---
+
+## Infobip Deduplication
+
+`sendWarrantySms()` has a 5-minute deduplication window per phone number (in-memory).
+If the CUSTOMERS_UPDATE webhook fires twice for the same customer within 5 minutes,
+the second SMS is suppressed. The SMSLog will show `smsSent: false` with an error message
+containing "Duplicate suppressed".
+
+---
+
+## Vercel Cron (Deprecated)
+
+`vercel.json` still contains a cron entry for `/cron.process-vouchers` running every 2 minutes.
+This is now a no-op — the route returns immediately with a deprecation message.
+
+**On Vercel Hobby plan:** the cron never ran anyway (Hobby plan does not support cron jobs).
+
+You can safely remove the cron entry from `vercel.json` once the webhook path is confirmed working:
+
+```json
+// Remove this block from vercel.json:
+"crons": [
+  {
+    "path": "/cron.process-vouchers",
+    "schedule": "*/2 * * * *"
+  }
+]
+```
+
+---
+
+## Testing
+
+### Manual webhook test (curl)
+
+Simulate Shopify firing CUSTOMERS_UPDATE with a voucher tag:
+
+```bash
+# Replace <HMAC> with a valid HMAC or temporarily bypass auth for testing
+curl -X POST https://your-app.vercel.app/webhooks/customers/update \
+  -H "Content-Type: application/json" \
+  -H "X-Shopify-Topic: customers/update" \
+  -H "X-Shopify-Shop-Domain: your-store.myshopify.com" \
+  -H "X-Shopify-Hmac-Sha256: <HMAC>" \
+  -d '{
+    "id": 12345678,
+    "first_name": "Ahmed",
+    "phone": "+9647701234567",
+    "tags": "warranty-registered, voucher-ready:WARRANTY15:WARRANTY15-12345678"
+  }'
+```
+
+### Verify in Vercel logs
+
+Vercel Dashboard → your project → **Logs** → filter by `webhooks.customers.update`
+
+Expected log sequence:
+```
+[customers/update] received for shop=ae53cd-2.myshopify.com
+[customers/update] Sending voucher SMS to +9647701234567 code=WARRANTY15-12345678
+[Infobip] Attempt 1/3 → +9647701234567 (reg: ...)
+[Infobip] ✓ Sent to +9647701234567, messageId=...
+[customers/update] SMS sent. messageId=...
+[customers/update] Removed tag "voucher-ready:WARRANTY15:WARRANTY15-12345678" from customer 12345678
+```
+
+### Check SMSLog in database
+
+```sql
+SELECT phone, "smsSent", "smsSentAt", "smsProviderResponse"
+FROM "SMSLog"
+ORDER BY "smsSentAt" DESC
+LIMIT 10;
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| No SMS received, no SMSLog entry | Webhook not registered | Re-install app or check Partners dashboard |
+| SMSLog entry with `smsSent: false` and Infobip error | Bad API key or sender ID | Check `INFOBIP_API_KEY`, `INFOBIP_SENDER` env vars |
+| "Duplicate suppressed" in logs | Webhook fired twice < 5 min | Normal — only one SMS was needed |
+| SMS sent but wrong phone | Phone not on Shopify customer | Verify `/api/warranty` is storing phone on Shopify customer object |
+| Tag not removed after SMS | GraphQL mutation failed | Check Vercel logs for tag removal error; safe to remove tag manually in Shopify admin |
+| `voucher-ready` tag missing | Flow not configured | Check Flow branches add the tag with correct format |
+</file>
+
 <file path="prisma/migrations/migration_lock.toml">
 # Please do not edit this file manually
 # It should be added in your version-control system (e.g., Git)
@@ -2701,102 +3682,6 @@ webhooks_path = "/webhooks/app/uninstalled"
 [commands]
 predev = "pnpm exec prisma generate"
 dev = "pnpm exec prisma migrate deploy && pnpm exec remix vite:dev"
-</file>
-
-<file path="vercel.json">
-{
-  "crons": [
-    {
-      "path": "/cron.process-vouchers",
-      "schedule": "*/2 * * * *"
-    }
-  ],
-  "headers": [
-    {
-      "source": "/public/warranty-register(.*)",
-      "headers": [
-        { "key": "X-Frame-Options", "value": "ALLOWALL" },
-        { "key": "Content-Security-Policy", "value": "frame-ancestors *" }
-      ]
-    }
-  ]
-}
-</file>
-
-<file path="vite.config.ts">
-import { vitePlugin as remix } from "@remix-run/dev";
-import { installGlobals } from "@remix-run/node";
-import { defineConfig, type UserConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
-
-installGlobals({ nativeFetch: true });
-
-// Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
-// Replace the HOST env var with SHOPIFY_APP_URL so that it doesn't break the remix server. The CLI will eventually
-// stop passing in HOST, so we can remove this workaround after the next major release.
-if (
-  process.env.HOST &&
-  (!process.env.SHOPIFY_APP_URL ||
-    process.env.SHOPIFY_APP_URL === process.env.HOST)
-) {
-  process.env.SHOPIFY_APP_URL = process.env.HOST;
-  delete process.env.HOST;
-}
-
-const host = new URL(process.env.SHOPIFY_APP_URL || "http://localhost")
-  .hostname;
-
-let hmrConfig;
-if (host === "localhost") {
-  hmrConfig = {
-    protocol: "ws",
-    host: "localhost",
-    port: 64999,
-    clientPort: 64999,
-  };
-} else {
-  hmrConfig = {
-    protocol: "wss",
-    host: host,
-    port: parseInt(process.env.FRONTEND_PORT!) || 8002,
-    clientPort: 443,
-  };
-}
-
-export default defineConfig({
-  server: {
-    allowedHosts: [host],
-    cors: {
-      preflightContinue: true,
-    },
-    port: Number(process.env.PORT || 3000),
-    hmr: hmrConfig,
-    fs: {
-      // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
-      allow: ["app", "node_modules"],
-    },
-  },
-  plugins: [
-    remix({
-      ignoredRouteFiles: ["**/.*"],
-      future: {
-        v3_fetcherPersist: true,
-        v3_relativeSplatPath: true,
-        v3_throwAbortReason: true,
-        v3_lazyRouteDiscovery: true,
-        v3_singleFetch: false,
-        v3_routeConfig: true,
-      },
-    }),
-    tsconfigPaths(),
-  ],
-  build: {
-    assetsInlineLimit: 0,
-  },
-  optimizeDeps: {
-    include: ["@shopify/app-bridge-react", "@shopify/polaris"],
-  },
-}) satisfies UserConfig;
 </file>
 
 <file path=".github/dependabot.yml">
@@ -2860,127 +3745,45 @@ updates:
           - "patch"
 </file>
 
-<file path=".github/workflows/ci.yml">
-on: [push, pull_request]
-
-name: CI
-
+<file path=".github/workflows/close-waiting-for-response-issues.yml">
+name: Close Waiting for Response Issues
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
 jobs:
-  CI:
-    name: CI_Node_${{ matrix.version }}
+  check-need-info:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        version: [20.19.0, 22, 24]
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - name: close-issues
+        uses: actions-cool/issues-helper@45d75b6cf72bf4f254be6230cb887ad002702491 # v3.6.3
         with:
-          node-version: ${{ matrix.version }}
-      - name: Install
-        run: yarn install
+          actions: "close-issues"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          labels: "Waiting for Response"
+          inactive-day: 14
+          body: |
+            We are closing this issue because we did not hear back regarding additional details we needed to resolve this issue. If the issue persists and you are able to provide the missing clarification we need, you can respond here or create a new issue.
+
+            We appreciate your understanding as we try to manage our number of open issues.
 </file>
 
-<file path=".github/workflows/convert-to-js.yml">
-name: Create Javascript conversion PR
-
+<file path=".github/workflows/remove-labels-on-activity.yml">
+name: Remove Waiting Labels
 on:
-  push:
-    branches:
-      - main
-
+  issue_comment:
+    types: [created]
   workflow_dispatch:
-
 jobs:
-  convert-ts-files:
+  remove-labels-on-activity:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
-
-      - name: Create lock file
-        run: touch yarn.lock
-
-      - name: Setup Node.js
-        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions-ecosystem/action-remove-labels@2ce5d41b4b6aa8503e285553f75ed56e0a40bae0 # v1.2.0
+        if: contains(github.event.issue.labels.*.name, 'Waiting for Response')
         with:
-          node-version: 22.12.x
-          cache: 'yarn'
-
-      - name: Install dependencies
-        run: yarn add -W --dev @shopify/eslint-plugin --ignore-engines
-
-      - name: Create temporary tsconfig file
-        run: |
-          echo '{
-            "include": ["./app/**/*", "*.ts", "*.tsx", ".graphqlrc.ts"],
-            "compilerOptions": {
-              "strict": true,
-              "removeComments": false,
-              "skipLibCheck": true,
-              "isolatedModules": true,
-              "noEmitOnError": true,
-              "jsx": "preserve",
-              "module": "ES2022",
-              "moduleResolution": "bundler",
-              "target": "ES2022",
-              "paths": {
-                "~/*": ["./app/*"]
-              }
-            }
-          }' > tsconfig.js.json
-
-      - name: Transpile to Javascript
-        run: yarn tsc -p tsconfig.js.json
-
-      - name: Remove Typescript files
-        run: |
-          find app \( -name "*.ts" -o -name "*.tsx" \) -delete
-          find . \( -name ".graphqlrc.ts" -o -name "tsconfig.js.json" -o -name "vite.config.ts" \) -delete
-
-      - name: Run prettier
-        run: yarn prettier -w "app/**/*.{js,jsx}" ".graphqlrc.js" "vite.config.js"
-
-      - name: Run ESLint
-        run: |
-          yarn lint "app/**/*.{js,jsx}" ".graphqlrc.js" "vite.config.js" --fix --no-cache --ignore-pattern "\!.graphqlrc.js" --plugin @shopify/eslint-plugin --rule '{
-            "import/order": "error",
-            "import/newline-after-import": "error",
-            "padding-line-between-statements": ["error",
-              { "blankLine": "always", "prev": ["const", "let", "var"], "next": "*"},
-              { "blankLine": "any",    "prev": ["const", "let", "var"], "next": ["const", "let", "var"]}
-              { "blankLine": "always", "prev": "*", "next": "return" },
-              { "blankLine": "always", "prev": "*", "next": "export" },
-              { "blankLine": "never",  "prev": "export", "next": "export" },
-              { "blankLine": "always", "prev": "*", "next": "block-like" },
-              { "blankLine": "always", "prev": "block-like", "next": "*" }
-            ]}'
-
-      - name: Prepare files for git
-        run: |
-          git config user.name GitHub
-          git config user.email noreply@github.com
-          git fetch
-          git restore --staged package.json
-          git restore package.json
-
-      - name: Stage changes to files
-        run: |
-          git add .
-          git checkout -b temp_javascript_updates
-          git commit -m "Convert template to Javascript"
-          git checkout javascript
-          git pull
-          git checkout -
-          git rebase -m -X theirs javascript
-          git push -f origin temp_javascript_updates:javascript_updates
-
-      - name: Create Javascript PR
-        run: |
-          gh pr view --json mergedAt -q ".mergedAt" javascript_updates | grep -E "^$" || \
-          gh pr create -B javascript -H javascript_updates --title 'Convert template to Javascript' --body 'This is an automated PR that converts the latest changes from Typescript to Javascript'
-        env:
-          GH_TOKEN: ${{ github.token }}
+          labels: |
+            Waiting for Response
 </file>
 
 <file path="app/routes/public.warranty-register.tsx">
@@ -4487,248 +5290,89 @@ export default function WarrantyRegister() {
 }
 </file>
 
-<file path="app/services/infobip.server.ts">
-/**
- * Infobip SMS Service
- * Sends Arabic/English warranty confirmation SMS via the Infobip REST API.
- * Credentials are read from environment variables — never hardcode them here.
- *
- * Required env vars:
- *   INFOBIP_API_KEY   — your Infobip API key
- *   INFOBIP_BASE_URL  — e.g. https://8pmk3.api.infobip.com
- *   INFOBIP_SENDER    — sender ID, e.g. LUFIAN
- */
-
-import { normalizePhone } from "../utils/twilio.server";
-
-const INFOBIP_API_KEY = process.env.INFOBIP_API_KEY ?? "";
-const INFOBIP_BASE_URL = (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, "");
-const INFOBIP_SENDER = process.env.INFOBIP_SENDER ?? "LUFIAN";
-
-// Deduplication window — don't send the same phone number a second SMS
-// within this many milliseconds (5 minutes).
-const DEDUP_WINDOW_MS = 5 * 60 * 1000;
-const recentlySent = new Map<string, number>(); // phone → timestamp
-
-// ---- Types ----------------------------------------------------------------
-
-export interface InfobipSmsParams {
-  phoneNumber: string;       // raw input — will be normalised to E.164
-  customerName: string;
-  voucherCode: string | null;
-  productName: string;
-  warrantyDays: number;
-  registrationId: string;
-  registrationDate: Date;
-  voucherExpiryDays?: number; // defaults to 30
-  lang?: "ar" | "en";        // defaults to "ar"
-}
-
-export interface InfobipSmsResult {
-  success: boolean;
-  messageId?: string;
-  phone: string;             // normalised E.164
-  timestamp: string;         // ISO-8601
-  error?: string;
-  rawResponse?: string;
-}
-
-// ---- Message builder ------------------------------------------------------
-
-function buildMessage(params: InfobipSmsParams): string {
-  const {
-    customerName,
-    voucherCode,
-    productName,
-    warrantyDays,
-    registrationId,
-    registrationDate,
-    voucherExpiryDays = 30,
-    lang = "ar",
-  } = params;
-
-  const dateStr = registrationDate.toLocaleDateString(
-    lang === "ar" ? "ar-IQ" : "en-GB",
-    { year: "numeric", month: "long", day: "numeric" },
-  );
-
-  if (lang === "ar") {
-    const voucherBlock = voucherCode
-      ? `\nكود الخصم الخاص بك: ${voucherCode}\nصلاحيته: ${voucherExpiryDays} يوم\n\nاستخدم الكود عند الشراء`
-      : "";
-
-    return (
-      `مرحباً ${customerName}،\n\n` +
-      `شكراً لتسجيل ضمان ${productName}\n` +
-      `رقم الضمان: ${registrationId}\n` +
-      `مدة الضمان: ${warrantyDays} يوم\n` +
-      `تاريخ التسجيل: ${dateStr}` +
-      voucherBlock
-    );
-  }
-
-  // English fallback
-  const voucherBlock = voucherCode
-    ? `\nYour discount code: ${voucherCode}\nValid for: ${voucherExpiryDays} days\n\nUse the code at checkout.`
-    : "";
-
-  return (
-    `Hello ${customerName},\n\n` +
-    `Thank you for registering your ${productName} warranty.\n` +
-    `Warranty ID: ${registrationId}\n` +
-    `Duration: ${warrantyDays} days\n` +
-    `Registration date: ${dateStr}` +
-    voucherBlock
-  );
-}
-
-// ---- Core send function ---------------------------------------------------
-
-async function sendOnce(
-  phone: string,
-  message: string,
-): Promise<{ success: boolean; messageId?: string; error?: string; rawResponse?: string }> {
-  if (!INFOBIP_API_KEY || !INFOBIP_BASE_URL) {
-    return { success: false, error: "Infobip credentials not configured (check env vars)." };
-  }
-
-  const url = `${INFOBIP_BASE_URL}/sms/2/text/advanced`;
-
-  const payload = {
-    messages: [
-      {
-        from: INFOBIP_SENDER,
-        destinations: [{ to: phone }],
-        text: message,
-        language: { languageCode: "AR" },
-      },
-    ],
-  };
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `App ${INFOBIP_API_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const raw = await response.text();
-
-  if (!response.ok) {
-    return {
-      success: false,
-      error: `Infobip HTTP ${response.status}`,
-      rawResponse: raw,
-    };
-  }
-
-  let data: any;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return { success: false, error: "Invalid JSON from Infobip", rawResponse: raw };
-  }
-
-  const msg = data?.messages?.[0];
-  const status = msg?.status?.groupName;
-
-  if (status === "PENDING" || status === "DELIVERED") {
-    return { success: true, messageId: msg.messageId, rawResponse: raw };
-  }
-
-  // Infobip may return 200 with an error status inside the payload
-  return {
-    success: false,
-    error: msg?.status?.description ?? "Unknown Infobip error",
-    rawResponse: raw,
-  };
-}
-
-// ---- Public API -----------------------------------------------------------
-
-/**
- * Send a warranty confirmation SMS via Infobip.
- *
- * - Validates and normalises the phone number to E.164.
- * - Deduplicates: won't send to the same number twice within 5 minutes.
- * - Retries up to 2 times on transient failure.
- * - Logs every attempt (success and failure).
- */
-export async function sendWarrantySms(
-  params: InfobipSmsParams,
-): Promise<InfobipSmsResult> {
-  const timestamp = new Date().toISOString();
-
-  // --- Normalise phone ---
-  let phone: string;
-  try {
-    phone = normalizePhone(params.phoneNumber);
-  } catch {
-    const err = `Invalid phone number: "${params.phoneNumber}"`;
-    console.error(`[Infobip] ${err}`);
-    return { success: false, phone: params.phoneNumber, timestamp, error: err };
-  }
-
-  // Basic sanity check: E.164 Iraqi numbers are +964 + 10 digits = 13 chars
-  if (!/^\+\d{7,15}$/.test(phone)) {
-    const err = `Phone failed E.164 validation after normalisation: "${phone}"`;
-    console.error(`[Infobip] ${err}`);
-    return { success: false, phone, timestamp, error: err };
-  }
-
-  // --- Deduplication ---
-  const lastSent = recentlySent.get(phone);
-  if (lastSent && Date.now() - lastSent < DEDUP_WINDOW_MS) {
-    const waitSec = Math.ceil((DEDUP_WINDOW_MS - (Date.now() - lastSent)) / 1000);
-    const msg = `Duplicate suppressed — already sent to ${phone} ${Math.round((Date.now() - lastSent) / 1000)}s ago (${waitSec}s remaining)`;
-    console.warn(`[Infobip] ${msg}`);
-    return { success: false, phone, timestamp, error: msg };
-  }
-
-  const message = buildMessage(params);
-
-  // --- Send with up to 2 retries ---
-  const MAX_ATTEMPTS = 3;
-  let lastResult: Awaited<ReturnType<typeof sendOnce>> = {
-    success: false,
-    error: "No attempts made",
-  };
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    console.log(`[Infobip] Attempt ${attempt}/${MAX_ATTEMPTS} → ${phone} (reg: ${params.registrationId})`);
-    lastResult = await sendOnce(phone, message);
-
-    if (lastResult.success) {
-      recentlySent.set(phone, Date.now());
-      console.log(`[Infobip] ✓ Sent to ${phone}, messageId=${lastResult.messageId}`);
-      return {
-        success: true,
-        messageId: lastResult.messageId,
-        phone,
-        timestamp,
-        rawResponse: lastResult.rawResponse,
-      };
+<file path="vercel.json">
+{
+  "headers": [
+    {
+      "source": "/public/warranty-register(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "ALLOWALL" },
+        { "key": "Content-Security-Policy", "value": "frame-ancestors *" }
+      ]
     }
-
-    console.warn(`[Infobip] Attempt ${attempt} failed: ${lastResult.error}`);
-    if (attempt < MAX_ATTEMPTS) {
-      // Simple exponential back-off: 1s, 2s
-      await new Promise((r) => setTimeout(r, attempt * 1000));
-    }
-  }
-
-  console.error(`[Infobip] All ${MAX_ATTEMPTS} attempts failed for ${phone}:`, lastResult.error);
-  return {
-    success: false,
-    phone,
-    timestamp,
-    error: lastResult.error,
-    rawResponse: lastResult.rawResponse,
-  };
+  ]
 }
+</file>
+
+<file path=".github/workflows/convert-to-js.yml">
+# Disabled: This was a Shopify template maintenance workflow that converts the
+# TypeScript template to a JavaScript branch for Shopify's own repo.
+# It is not applicable to this app and would always fail (no "javascript" branch,
+# no CLA_TOKEN secret). The workflow is kept as a file so future merges from the
+# upstream Shopify template don't re-add it without review.
+#
+# Original source: https://github.com/Shopify/shopify-app-template-remix
+
+name: Create Javascript conversion PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Manually triggered — this workflow is intentionally disabled"
+        required: false
+
+jobs:
+  disabled:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain why this is disabled
+        run: |
+          echo "This workflow is a Shopify template tool, not needed for Geepas Warranty."
+          echo "It converts TS→JS for Shopify's own javascript branch. Not applicable here."
+          exit 0
+</file>
+
+<file path="app/shopify.server.ts">
+import "@shopify/shopify-app-remix/adapters/node";
+import {
+  ApiVersion,
+  AppDistribution,
+  shopifyApp,
+} from "@shopify/shopify-app-remix/server";
+import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+import prisma from "./db.server";
+
+const shopify = shopifyApp({
+  apiKey: process.env.SHOPIFY_API_KEY,
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiVersion: ApiVersion.January25,
+  scopes: process.env.SCOPES ? process.env.SCOPES.split(",") : [
+    "read_products",
+    "read_customers",
+    "write_customers",
+  ],
+  appUrl: process.env.SHOPIFY_APP_URL || "",
+  authPathPrefix: "/auth",
+  sessionStorage: new PrismaSessionStorage(prisma),
+  distribution: AppDistribution.AppStore,
+  future: {
+    unstable_newEmbeddedAuthStrategy: true,
+    expiringOfflineAccessTokens: true,
+  },
+  ...(process.env.SHOP_CUSTOM_DOMAIN
+    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
+    : {}),
+});
+
+export default shopify;
+export const apiVersion = ApiVersion.January25;
+export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
+export const authenticate = shopify.authenticate;
+export const unauthenticated = shopify.unauthenticated;
+export const login = shopify.login;
+export const registerWebhooks = shopify.registerWebhooks;
+export const sessionStorage = shopify.sessionStorage;
 </file>
 
 <file path="prisma/schema.prisma">
@@ -4838,475 +5482,297 @@ model SMSLog {
 }
 </file>
 
-<file path="app/routes/api.warranty.tsx">
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+<file path="app/services/infobip.server.ts">
+/**
+ * Infobip SMS Service
+ * Sends Arabic/English warranty confirmation SMS via the Infobip REST API.
+ * Credentials are read from environment variables — never hardcode them here.
+ *
+ * Required env vars:
+ *   INFOBIP_API_KEY   — your Infobip API key
+ *   INFOBIP_BASE_URL  — e.g. https://8pmk3.api.infobip.com
+ *   INFOBIP_SENDER    — sender ID, e.g. LUFIAN
+ */
+
 import prisma from "../db.server";
-import { unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/twilio.server";
 
+const INFOBIP_API_KEY = process.env.INFOBIP_API_KEY ?? "";
+const INFOBIP_BASE_URL = (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, "");
+const INFOBIP_SENDER = process.env.INFOBIP_SENDER ?? "LUFIAN";
 
-/**
- * POST /api/warranty
- *
- * Full warranty registration flow:
- * 1. Validate input
- * 2. Normalize phone number
- * 3. Resolve or create Shopify customer (tagged "warranty-registered")
- * 4. Check reward eligibility (no stacking, no duplicates)
- * 5. Save registration + products
- * 6. Record CustomerReward row if first-time registrant
- *
- * Discount code creation and customer messaging are handled by Shopify Flow.
- */
-export const action = async ({ request }: ActionFunctionArgs) => {
-  if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, { status: 405 });
-  }
+// Deduplication window — checked against SMSLog in DB, not in-memory.
+// Survives process restarts and works across multiple server instances.
+const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 
-  try {
-    const body = await request.json();
+// ---- Types ----------------------------------------------------------------
 
-    const {
-      shop,
-      firstName,
-      email,
-      phone,
-      city,
-      store,
-      purchaseDate,
-      invoiceNumber,
-      products,
-      isNewCustomer,
-    } = body;
-
-    // --- Validation ---
-    const errors: string[] = [];
-    if (!shop) errors.push("Shop is required.");
-    if (!firstName || firstName.trim().length < 2)
-      errors.push("First name is required (min 2 characters).");
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      errors.push("Valid email is required.");
-    if (!phone || phone.trim().length < 7)
-      errors.push("Valid phone number is required.");
-    if (!city) errors.push("City is required.");
-    if (!store) errors.push("Store is required.");
-    if (!purchaseDate) errors.push("Purchase date is required.");
-    if (!products || !Array.isArray(products) || products.length === 0)
-      errors.push("At least one product is required.");
-
-    if (errors.length > 0) {
-      return json({ errors }, { status: 400 });
-    }
-
-    const normalizedPhone = normalizePhone(phone);
-
-    // --- Resolve Shopify Customer ---
-    let customerId: string;
-
-    try {
-      const { admin } = await unauthenticated.admin(shop);
-
-      console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
-      console.log("[api.warranty] Normalized phone:", normalizedPhone);
-
-      const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
-      if (lookupResult) {
-        console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
-        customerId = lookupResult;
-      } else {
-        console.log("[api.warranty] Customer not found by phone. Checking email or creating new customer...");
-        customerId = await createOrUpdateShopifyCustomer(admin, {
-          firstName: firstName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: normalizedPhone,
-        });
-        console.log("[api.warranty] Resolved customerId:", customerId);
-      }
-
-      // --- Check Reward Eligibility ---
-      // Rule: No stacking, no duplicates. Phone is source of truth.
-      const existingReward = await prisma.customerReward.findFirst({
-        where: { shop, phone: normalizedPhone },
-      });
-
-      // --- Save Warranty Registration ---
-      const registration = await prisma.warrantyRegistration.create({
-        data: {
-          shop,
-          customerId,
-          firstName: firstName.trim(),
-          email: email.trim().toLowerCase(),
-          phone: normalizedPhone,
-          city,
-          store,
-          purchaseDate: new Date(purchaseDate),
-          invoiceNumber: invoiceNumber?.trim() || null,
-          status: "pending",
-          products: {
-            create: products.map((p: any) => ({
-              productId: p.productId || null,
-              productTitle: p.productTitle,
-              sku: p.sku || null,
-              isManual: p.isManual || false,
-            })),
-          },
-        },
-        include: { products: true },
-      });
-
-      // --- Record First-Time Reward Eligibility ---
-      // Discount code creation is delegated to Shopify Flow (triggered by
-      // the "warranty-registered" tag on the customer). We only track
-      // eligibility here so the no-stacking rule works on subsequent registrations.
-      let rewardCreated = false;
-      if (!existingReward) {
-        await prisma.customerReward.create({
-          data: {
-            shop,
-            phone: normalizedPhone,
-            customerId,
-            rewardType: "WARRANTY_15",
-            discountCode: "",  // generated by Shopify Flow, not this route
-          },
-        });
-        rewardCreated = true;
-      }
-
-      return json(
-        {
-          success: true,
-          registration: {
-            id: registration.id,
-            status: registration.status,
-            productsCount: registration.products.length,
-          },
-          reward: rewardCreated
-            ? { type: "WARRANTY_15", note: "Discount code will be sent via WhatsApp by Shopify Flow." }
-            : existingReward
-              ? { message: "Customer already has a reward on record." }
-              : null,
-        },
-        { status: 201 }
-      );
-    } catch (shopifyErr: any) {
-      console.error("[api.warranty] Shopify/DB error:", shopifyErr);
-      return json(
-        {
-          error: "Failed to process warranty registration. Please try again later.",
-          debug: shopifyErr instanceof Error ? shopifyErr.message : shopifyErr,
-          stack: shopifyErr instanceof Error ? shopifyErr.stack : undefined,
-        },
-        { status: 500 }
-      );
-    }
-  } catch (error: any) {
-    console.error("[api.warranty] Parse error:", error);
-    return json({ error: "Invalid request body." }, { status: 400 });
-  }
-};
-
-// ---- Helper: Lookup customer by phone ----
-async function lookupCustomerByPhone(
-  admin: any,
-  phone: string
-): Promise<string | null> {
-  const query = `#graphql
-    query customerByPhone($query: String!) {
-      customers(first: 1, query: $query) {
-        edges {
-          node {
-            id
-          }
-        }
-      }
-    }`;
-  const variables = { query: `phone:${phone}` };
-  console.log("[lookupCustomerByPhone] Shopify lookup variables:", variables);
-
-  const response = await admin.graphql(query, { variables });
-  const data = await response.json();
-  console.log("[lookupCustomerByPhone] Shopify response:", JSON.stringify(data, null, 2));
-
-  if (data?.errors) {
-    console.error("[lookupCustomerByPhone] GraphQL errors:", data.errors);
-    throw new Error(`Shopify lookup error: ${JSON.stringify(data.errors)}`);
-  }
-
-  const edges = data?.data?.customers?.edges || [];
-  return edges.length > 0 ? edges[0].node.id : null;
+export interface InfobipSmsParams {
+  phoneNumber: string;       // raw input — will be normalised to E.164
+  customerName: string;
+  voucherCode: string | null;
+  productName: string;
+  warrantyDays: number;
+  registrationId: string;
+  registrationDate: Date;
+  voucherExpiryDays?: number; // defaults to 30
+  lang?: "ar" | "en";        // defaults to "ar"
+  shop?: string;             // required for DB dedup check
 }
 
-// ---- Helper: Create or update Shopify Customer ----
-async function createOrUpdateShopifyCustomer(
-  admin: any,
-  input: { firstName: string; email: string; phone: string }
-): Promise<string> {
-  const queryEmail = `#graphql
-    query customerByEmail($query: String!) {
-      customers(first: 1, query: $query) {
-        edges {
-          node {
-            id
-            phone
-          }
-        }
-      }
-    }`;
-  const variablesEmail = { query: `email:${input.email}` };
-  console.log("[createOrUpdateShopifyCustomer] Checking existing email:", variablesEmail);
-
-  const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
-  const emailCheckData = await emailCheckResponse.json();
-  console.log("[createOrUpdateShopifyCustomer] Email check response:", JSON.stringify(emailCheckData, null, 2));
-
-  if (emailCheckData?.errors) {
-    console.error("[createOrUpdateShopifyCustomer] Email check GraphQL errors:", emailCheckData.errors);
-  }
-
-  const existingByEmail = emailCheckData?.data?.customers?.edges || [];
-
-  if (existingByEmail.length > 0) {
-    const existing = existingByEmail[0].node;
-    console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
-
-    if (existing.phone !== input.phone) {
-      console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
-      const mutationUpdate = `#graphql
-        mutation customerUpdate($input: CustomerInput!) {
-          customerUpdate(input: $input) {
-            customer { id }
-            userErrors { field message }
-          }
-        }`;
-      const variablesUpdate = {
-        input: { id: existing.id, phone: input.phone, tags: ["warranty-registered"] },
-      };
-      const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
-      const updateData = await updateResponse.json();
-      console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
-
-      const updateErrors = updateData?.data?.customerUpdate?.userErrors || [];
-      if (updateErrors.length > 0) {
-        console.error("[createOrUpdateShopifyCustomer] Update phone user errors:", updateErrors);
-      }
-    }
-
-    // Always ensure the tag is present regardless of whether phone changed
-    await tagCustomerWarrantyRegistered(admin, existing.id);
-    return existing.id;
-  }
-
-  // Create new customer
-  console.log("[createOrUpdateShopifyCustomer] Creating new customer:", input);
-  const mutationCreate = `#graphql
-    mutation customerCreate($input: CustomerInput!) {
-      customerCreate(input: $input) {
-        customer { id }
-        userErrors { field message }
-      }
-    }`;
-  const variablesCreate = {
-    input: {
-      firstName: input.firstName,
-      email: input.email,
-      phone: input.phone,
-      tags: ["warranty-registered"],
-    },
-  };
-
-  const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
-  const createData = await createResponse.json();
-  console.log("[createOrUpdateShopifyCustomer] Create response:", JSON.stringify(createData, null, 2));
-
-  const userErrors = createData?.data?.customerCreate?.userErrors || [];
-  if (userErrors.length > 0) {
-    console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
-    console.log("[createOrUpdateShopifyCustomer] Falling back to phone lookup:", input.phone);
-    const fallbackId = await lookupCustomerByPhone(admin, input.phone);
-    if (fallbackId) {
-      console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
-      return fallbackId;
-    }
-    throw new Error(
-      `Customer creation failed: ${userErrors.map((e: any) => e.message).join(", ")}`
-    );
-  }
-
-  const newCustomerId = createData?.data?.customerCreate?.customer?.id;
-  if (!newCustomerId) {
-    throw new Error("Customer creation returned no ID.");
-  }
-
-  console.log("[createOrUpdateShopifyCustomer] Customer created. ID:", newCustomerId);
-
-  // Send activation email invite
-  try {
-    const mutationInvite = `#graphql
-      mutation customerSendAccountInviteEmail($customerId: ID!) {
-        customerSendAccountInviteEmail(customerId: $customerId) {
-          customer { id }
-          userErrors { field message }
-        }
-      }`;
-    const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
-    const inviteData = await inviteResponse.json();
-    const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
-    if (inviteErrors.length > 0) {
-      console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
-    }
-  } catch (inviteErr) {
-    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed (non-critical):", inviteErr);
-  }
-
-  return newCustomerId;
+export interface InfobipSmsResult {
+  success: boolean;
+  messageId?: string;
+  phone: string;             // normalised E.164
+  timestamp: string;         // ISO-8601
+  error?: string;
+  rawResponse?: string;
 }
 
-// ---- Helper: Ensure warranty-registered tag is on the customer ----
-// Uses tagsAdd so it never overwrites existing tags.
-async function tagCustomerWarrantyRegistered(
-  admin: any,
-  customerId: string
-): Promise<void> {
-  try {
-    const response = await admin.graphql(
-      `#graphql
-      mutation tagsAdd($id: ID!, $tags: [String!]!) {
-        tagsAdd(id: $id, tags: $tags) {
-          userErrors { field message }
-        }
-      }`,
-      { variables: { id: customerId, tags: ["warranty-registered"] } }
-    );
-    const data = await response.json();
-    const errors = data?.data?.tagsAdd?.userErrors || [];
-    if (errors.length > 0) {
-      console.warn("[tagCustomerWarrantyRegistered] userErrors:", errors);
-    }
-  } catch (err) {
-    console.warn("[tagCustomerWarrantyRegistered] Failed (non-critical):", err);
-  }
-}
-</file>
+// ---- Message builder ------------------------------------------------------
 
-<file path="app/routes/webhooks.customers.update.tsx">
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-import { unauthenticated } from "../shopify.server";
-import { processCustomerVoucher } from "../lib/voucher-processing.server";
+function buildMessage(params: InfobipSmsParams): string {
+  const {
+    customerName,
+    voucherCode,
+    productName,
+    warrantyDays,
+    registrationId,
+    registrationDate,
+    voucherExpiryDays = 30,
+    lang = "ar",
+  } = params;
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, payload, topic } = await authenticate.webhook(request);
-  console.log(`[${topic}] webhook received for ${shop}`);
-
-  const raw = payload as {
-    id: number;
-    first_name?: string;
-    phone?: string;
-    tags?: string;
-  };
-
-  console.log(`[${topic}] customer ${raw.id} tags: "${raw.tags}"`);
-
-  const tags = (raw.tags ?? "")
-    .split(",")
-    .map((t: string) => t.trim())
-    .filter(Boolean);
-
-  const { admin } = await unauthenticated.admin(shop);
-
-  const result = await processCustomerVoucher(
-    admin,
-    {
-      id: `gid://shopify/Customer/${raw.id}`,
-      firstName: raw.first_name ?? "",
-      phone: raw.phone ?? "",
-      tags,
-    },
-    topic,
+  const dateStr = registrationDate.toLocaleDateString(
+    lang === "ar" ? "ar-IQ" : "en-GB",
+    { year: "numeric", month: "long", day: "numeric" },
   );
 
-  console.log(`[${topic}] result:`, result);
+  if (lang === "ar") {
+    const voucherBlock = voucherCode
+      ? `\nكود الخصم الخاص بك: ${voucherCode}\nصلاحيته: ${voucherExpiryDays} يوم\n\nاستخدم الكود عند الشراء`
+      : "";
 
-  return new Response(null, { status: 200 });
-};
-</file>
+    return (
+      `مرحباً ${customerName}،\n\n` +
+      `شكراً لتسجيل ضمان ${productName}\n` +
+      `رقم الضمان: ${registrationId}\n` +
+      `مدة الضمان: ${warrantyDays} يوم\n` +
+      `تاريخ التسجيل: ${dateStr}` +
+      voucherBlock
+    );
+  }
 
-<file path="shopify.app.toml">
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+  // English fallback
+  const voucherBlock = voucherCode
+    ? `\nYour discount code: ${voucherCode}\nValid for: ${voucherExpiryDays} days\n\nUse the code at checkout.`
+    : "";
 
-client_id = "41d1d7fae24939000bdbd2935ae8857f"
-name = "Warranty Registration"
-application_url = "https://geepas-warranty.vercel.app"
-embedded = true
+  return (
+    `Hello ${customerName},\n\n` +
+    `Thank you for registering your ${productName} warranty.\n` +
+    `Warranty ID: ${registrationId}\n` +
+    `Duration: ${warrantyDays} days\n` +
+    `Registration date: ${dateStr}` +
+    voucherBlock
+  );
+}
 
-[build]
-automatically_update_urls_on_dev = true
+// ---- Core send function ---------------------------------------------------
 
-[webhooks]
-api_version = "2026-07"
+async function sendOnce(
+  phone: string,
+  message: string,
+): Promise<{ success: boolean; messageId?: string; error?: string; rawResponse?: string }> {
+  if (!INFOBIP_API_KEY || !INFOBIP_BASE_URL) {
+    return { success: false, error: "Infobip credentials not configured (check env vars)." };
+  }
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/customers/update"
-  topics = [ "customers/update" ]
-  include_fields = [ "tags", "phone", "first_name", "id" ]
+  const url = `${INFOBIP_BASE_URL}/sms/2/text/advanced`;
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
+  const payload = {
+    messages: [
+      {
+        from: INFOBIP_SENDER,
+        destinations: [{ to: phone }],
+        text: message,
+        language: { languageCode: "AR" },
+      },
+    ],
+  };
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
+  // Timeout via Promise.race — intentionally avoids AbortController.
+  //
+  // Why not AbortController: aborting a fetch after the Response object is
+  // returned (but while the body is still streaming) throws
+  // "Cannot cancel a stream that already has a reader" and crashes the process.
+  // clearTimeout in a finally block does NOT prevent this because the abort
+  // callback can already be queued in the JS task queue by the time finally runs.
+  //
+  // With Promise.race the fetch runs signal-free. If the timeout wins, the fetch
+  // continues silently in the background and resolves/rejects with no listener —
+  // the .catch(()=>{}) below suppresses that unhandled-rejection path.
+  //
+  // 8 s is generous: this code is now called from issueRewardAndNotify (a direct
+  // server-side call), not from a Shopify webhook, so the old 5 s constraint is gone.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error("TIMEOUT")), 8000);
+  });
 
-[access_scopes]
-# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,write_customers,write_metaobject_definitions,write_metaobjects"
+  const fetchPromise = fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `App ${INFOBIP_API_KEY}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(payload),
+    // no signal — avoids the stream-reader conflict on abort
+  });
+  // If the timeout wins the race and fetchPromise later rejects, there will be no
+  // awaiting listener. Attach a no-op catch so Node never sees an unhandled rejection.
+  fetchPromise.catch(() => {});
 
-[auth]
-redirect_urls = [ "https://geepas-warranty.vercel.app/auth/callback" ]
-</file>
+  let response: Response;
+  try {
+    response = await Promise.race([fetchPromise, timeoutPromise]);
+    clearTimeout(timeoutHandle!);
+  } catch (err: any) {
+    clearTimeout(timeoutHandle!);
+    return {
+      success: false,
+      error: err?.message === "TIMEOUT"
+        ? "Infobip timed out after 8s"
+        : `Network error: ${err?.message ?? String(err)}`,
+    };
+  }
 
-<file path="app/shopify.server.ts">
-import "@shopify/shopify-app-remix/adapters/node";
-import {
-  ApiVersion,
-  AppDistribution,
-  shopifyApp,
-} from "@shopify/shopify-app-remix/server";
-import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
-import prisma from "./db.server";
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch (bodyErr: any) {
+    return { success: false, error: `Failed to read Infobip response body: ${bodyErr?.message}` };
+  }
 
-const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.January25,
-  scopes: process.env.SCOPES ? process.env.SCOPES.split(",") : [
-    "read_products",
-    "read_customers",
-    "write_customers",
-  ],
-  appUrl: process.env.SHOPIFY_APP_URL || "",
-  authPathPrefix: "/auth",
-  sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.AppStore,
-  future: {
-    unstable_newEmbeddedAuthStrategy: true,
-    expiringOfflineAccessTokens: true,
-  },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
-});
+  if (!response.ok) {
+    return {
+      success: false,
+      error: `Infobip HTTP ${response.status}`,
+      rawResponse: raw,
+    };
+  }
 
-export default shopify;
-export const apiVersion = ApiVersion.January25;
-export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
-export const authenticate = shopify.authenticate;
-export const unauthenticated = shopify.unauthenticated;
-export const login = shopify.login;
-export const registerWebhooks = shopify.registerWebhooks;
-export const sessionStorage = shopify.sessionStorage;
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { success: false, error: "Invalid JSON from Infobip", rawResponse: raw };
+  }
+
+  const msg = data?.messages?.[0];
+  const status = msg?.status?.groupName;
+
+  // ACCEPTED = queued for delivery (most common immediate response)
+  // PENDING  = awaiting delivery confirmation
+  // DELIVERED = confirmed delivered
+  if (status === "ACCEPTED" || status === "PENDING" || status === "DELIVERED") {
+    return { success: true, messageId: msg.messageId, rawResponse: raw };
+  }
+
+  // Infobip may return 200 with an error status inside the payload
+  return {
+    success: false,
+    error: msg?.status?.description ?? `Unexpected Infobip status: ${status}`,
+    rawResponse: raw,
+  };
+}
+
+// ---- Public API -----------------------------------------------------------
+
+/**
+ * Send a warranty confirmation SMS via Infobip.
+ *
+ * - Validates and normalises the phone number to E.164.
+ * - Deduplicates via SMSLog DB query (survives restarts and multi-instance deploys).
+ * - Single attempt with 8s timeout (no Shopify webhook constraint — called directly
+ *   from issueRewardAndNotify server-side). Transient failures are logged and surfaced
+ *   to the caller; the warranty registration always succeeds regardless.
+ * - Returns isDuplicate=true when dedup fires so the caller can still clean up the tag.
+ */
+export async function sendWarrantySms(
+  params: InfobipSmsParams,
+): Promise<InfobipSmsResult & { isDuplicate?: boolean }> {
+  const timestamp = new Date().toISOString();
+
+  // --- Normalise phone ---
+  let phone: string;
+  try {
+    phone = normalizePhone(params.phoneNumber);
+  } catch {
+    const err = `Invalid phone number: "${params.phoneNumber}"`;
+    console.error(`[Infobip] ${err}`);
+    return { success: false, phone: params.phoneNumber, timestamp, error: err };
+  }
+
+  // Basic sanity check: E.164 Iraqi numbers are +964 + 10 digits = 13 chars
+  if (!/^\+\d{7,15}$/.test(phone)) {
+    const err = `Phone failed E.164 validation after normalisation: "${phone}"`;
+    console.error(`[Infobip] ${err}`);
+    return { success: false, phone, timestamp, error: err };
+  }
+
+  // --- DB-backed deduplication ---
+  // Checks SMSLog so state is shared across all server instances and survives restarts.
+  try {
+    const cutoff = new Date(Date.now() - DEDUP_WINDOW_MS);
+    const recent = await prisma.sMSLog.findFirst({
+      where: {
+        phone,
+        smsSent: true,
+        smsSentAt: { gte: cutoff },
+      },
+      orderBy: { smsSentAt: "desc" },
+    });
+    if (recent) {
+      const agoSec = Math.round((Date.now() - recent.smsSentAt!.getTime()) / 1000);
+      const waitSec = Math.ceil((DEDUP_WINDOW_MS - agoSec * 1000) / 1000);
+      const msg = `Duplicate suppressed — already sent to ${phone} ${agoSec}s ago (${waitSec}s remaining in window)`;
+      console.warn(`[Infobip] ${msg}`);
+      return { success: false, isDuplicate: true, phone, timestamp, error: msg };
+    }
+  } catch (dedupErr) {
+    // Non-fatal: if DB check fails, proceed and let the SMS send rather than block it.
+    console.warn(`[Infobip] Dedup DB check failed (proceeding):`, dedupErr);
+  }
+
+  const message = buildMessage(params);
+
+  // Single attempt — called directly from issueRewardAndNotify, not a webhook.
+  // sendOnce has an 8s timeout; failures are logged and returned to the caller.
+  console.log(`[Infobip] Sending → ${phone} (reg: ${params.registrationId})`);
+  const result = await sendOnce(phone, message);
+
+  if (result.success) {
+    console.log(`[Infobip] ✓ Sent to ${phone}, messageId=${result.messageId}`);
+    return {
+      success: true,
+      messageId: result.messageId,
+      phone,
+      timestamp,
+      rawResponse: result.rawResponse,
+    };
+  }
+
+  console.error(`[Infobip] Send failed for ${phone}:`, result.error);
+  return {
+    success: false,
+    phone,
+    timestamp,
+    error: result.error,
+    rawResponse: result.rawResponse,
+  };
+}
 </file>
 
 <file path="README.md">
@@ -5666,6 +6132,562 @@ This template uses [Remix](https://remix.run). The following Shopify tools are a
 # Geepas-Warranty-
 </file>
 
+<file path="app/routes/api.warranty.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import prisma from "../db.server";
+import { unauthenticated } from "../shopify.server";
+import { normalizePhone } from "../utils/twilio.server";
+import { issueRewardAndNotify } from "../services/reward.server";
+
+
+/**
+ * POST /api/warranty
+ *
+ * Full warranty registration flow:
+ * 1. Validate input
+ * 2. Normalize phone number
+ * 3. Resolve or create Shopify customer (tagged "warranty-registered")
+ * 4. Check reward eligibility (no stacking, no duplicates)
+ * 5. Save registration + products
+ * 6. Issue WARRANTY15 discount code + send SMS via reward.server.ts (non-fatal)
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  try {
+    const body = await request.json();
+
+    const {
+      shop,
+      firstName,
+      email,
+      phone,
+      city,
+      store,
+      purchaseDate,
+      invoiceNumber,
+      products,
+      isNewCustomer,
+    } = body;
+
+    // --- Validation ---
+    const errors: string[] = [];
+    if (!shop) errors.push("Shop is required.");
+    if (!firstName || firstName.trim().length < 2)
+      errors.push("First name is required (min 2 characters).");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      errors.push("Valid email is required.");
+    if (!phone || phone.trim().length < 7)
+      errors.push("Valid phone number is required.");
+    if (!city) errors.push("City is required.");
+    if (!store) errors.push("Store is required.");
+    if (!purchaseDate) errors.push("Purchase date is required.");
+    if (!products || !Array.isArray(products) || products.length === 0)
+      errors.push("At least one product is required.");
+
+    if (errors.length > 0) {
+      return json({ errors }, { status: 400 });
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+
+    // --- Resolve Shopify Customer ---
+    let customerId: string;
+
+    try {
+      const { admin } = await unauthenticated.admin(shop);
+
+      console.log("[api.warranty] Resolving customer. Incoming phone:", phone);
+      console.log("[api.warranty] Normalized phone:", normalizedPhone);
+
+      const lookupResult = await lookupCustomerByPhone(admin, normalizedPhone);
+      if (lookupResult) {
+        console.log("[api.warranty] Customer found by phone. Reusing customerId:", lookupResult);
+        customerId = lookupResult;
+      } else {
+        console.log("[api.warranty] Customer not found by phone. Checking email or creating new customer...");
+        customerId = await createOrUpdateShopifyCustomer(admin, {
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+        });
+        console.log("[api.warranty] Resolved customerId:", customerId);
+      }
+
+      // Check whether a reward already exists for this phone — skip re-issue if so.
+      const existingReward = await prisma.customerReward.findFirst({
+        where: { shop, phone: normalizedPhone },
+      });
+
+      // --- Save Warranty Registration ---
+      const registration = await prisma.warrantyRegistration.create({
+        data: {
+          shop,
+          customerId,
+          firstName: firstName.trim(),
+          email: email.trim().toLowerCase(),
+          phone: normalizedPhone,
+          city,
+          store,
+          purchaseDate: new Date(purchaseDate),
+          invoiceNumber: invoiceNumber?.trim() || null,
+          status: "pending",
+          products: {
+            create: products.map((p: any) => ({
+              productId: p.productId || null,
+              productTitle: p.productTitle,
+              sku: p.sku || null,
+              isManual: p.isManual || false,
+            })),
+          },
+        },
+        include: { products: true },
+      });
+
+      // Issue discount code + send SMS directly (no Shopify Flow dependency).
+      // Non-fatal: a reward failure must never block the warranty registration.
+      if (existingReward) {
+        console.log(
+          `[reward] Customer ${normalizedPhone} already has a reward on record — skipping re-issue`,
+        );
+      } else {
+        const productName =
+          registration.products?.[0]?.productTitle ?? "Geepas product";
+
+        issueRewardAndNotify({
+          shop,
+          customerId,
+          phone: normalizedPhone,
+          customerName: firstName.trim(),
+          productName,
+          registrationId: registration.id,
+          registrationDate: registration.createdAt,
+          rewardType: "WARRANTY15",
+          discountPercentage: 15,
+        }).then((rewardResult) => {
+          if (!rewardResult.success) {
+            console.error(
+              `[reward] issueRewardAndNotify failed for registration ${registration.id}:`,
+              rewardResult.error,
+            );
+          } else {
+            console.log(
+              `[reward] Reward issued — code=${rewardResult.discountCode} messageId=${rewardResult.messageId}`,
+            );
+          }
+        }).catch((err) => {
+          console.error(
+            `[reward] issueRewardAndNotify threw for registration ${registration.id}:`,
+            err,
+          );
+        });
+      }
+
+      return json(
+        {
+          success: true,
+          registration: {
+            id: registration.id,
+            status: registration.status,
+            productsCount: registration.products.length,
+          },
+          message: "Warranty registered. Your discount code will be sent via SMS shortly.",
+        },
+        { status: 201 }
+      );
+    } catch (shopifyErr: any) {
+      console.error("[api.warranty] Shopify/DB error:", shopifyErr);
+      return json(
+        {
+          error: "Failed to process warranty registration. Please try again later.",
+          debug: shopifyErr instanceof Error ? shopifyErr.message : shopifyErr,
+          stack: shopifyErr instanceof Error ? shopifyErr.stack : undefined,
+        },
+        { status: 500 }
+      );
+    }
+  } catch (error: any) {
+    console.error("[api.warranty] Parse error:", error);
+    return json({ error: "Invalid request body." }, { status: 400 });
+  }
+};
+
+// ---- Helper: Lookup customer by phone ----
+async function lookupCustomerByPhone(
+  admin: any,
+  phone: string
+): Promise<string | null> {
+  const query = `#graphql
+    query customerByPhone($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+          }
+        }
+      }
+    }`;
+  // Wrap in quotes so Shopify treats it as a literal string, not a boolean
+  // expression. Without quotes, the + in +9647... is parsed as a boolean OR
+  // operator and the lookup returns no results even when the customer exists.
+  const variables = { query: `phone:"${phone}"` };
+  console.log("[lookupCustomerByPhone] Shopify lookup variables:", variables);
+
+  const response = await admin.graphql(query, { variables });
+  const data = await response.json();
+  console.log("[lookupCustomerByPhone] Shopify response:", JSON.stringify(data, null, 2));
+
+  if (data?.errors) {
+    console.error("[lookupCustomerByPhone] GraphQL errors:", data.errors);
+    throw new Error(`Shopify lookup error: ${JSON.stringify(data.errors)}`);
+  }
+
+  const edges = data?.data?.customers?.edges || [];
+  return edges.length > 0 ? edges[0].node.id : null;
+}
+
+// ---- Helper: Create or update Shopify Customer ----
+async function createOrUpdateShopifyCustomer(
+  admin: any,
+  input: { firstName: string; email: string; phone: string }
+): Promise<string> {
+  const queryEmail = `#graphql
+    query customerByEmail($query: String!) {
+      customers(first: 1, query: $query) {
+        edges {
+          node {
+            id
+            phone
+          }
+        }
+      }
+    }`;
+  const variablesEmail = { query: `email:${input.email}` };
+  console.log("[createOrUpdateShopifyCustomer] Checking existing email:", variablesEmail);
+
+  const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });
+  const emailCheckData = await emailCheckResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Email check response:", JSON.stringify(emailCheckData, null, 2));
+
+  if (emailCheckData?.errors) {
+    console.error("[createOrUpdateShopifyCustomer] Email check GraphQL errors:", emailCheckData.errors);
+  }
+
+  const existingByEmail = emailCheckData?.data?.customers?.edges || [];
+
+  if (existingByEmail.length > 0) {
+    const existing = existingByEmail[0].node;
+    console.log("[createOrUpdateShopifyCustomer] Customer found by email. ID:", existing.id, "Existing phone:", existing.phone);
+
+    if (existing.phone !== input.phone) {
+      console.log("[createOrUpdateShopifyCustomer] Updating phone for customer", existing.id, "to", input.phone);
+      const mutationUpdate = `#graphql
+        mutation customerUpdate($input: CustomerInput!) {
+          customerUpdate(input: $input) {
+            customer { id }
+            userErrors { field message }
+          }
+        }`;
+      const variablesUpdate = {
+        input: { id: existing.id, phone: input.phone, tags: ["warranty-registered"] },
+      };
+      const updateResponse = await admin.graphql(mutationUpdate, { variables: variablesUpdate });
+      const updateData = await updateResponse.json();
+      console.log("[createOrUpdateShopifyCustomer] Update response:", JSON.stringify(updateData, null, 2));
+
+      const updateErrors = updateData?.data?.customerUpdate?.userErrors || [];
+      if (updateErrors.length > 0) {
+        console.error("[createOrUpdateShopifyCustomer] Update phone user errors:", updateErrors);
+      }
+    }
+
+    // Always ensure the tag is present regardless of whether phone changed
+    await tagCustomerWarrantyRegistered(admin, existing.id);
+    return existing.id;
+  }
+
+  // Create new customer
+  console.log("[createOrUpdateShopifyCustomer] Creating new customer:", input);
+  const mutationCreate = `#graphql
+    mutation customerCreate($input: CustomerInput!) {
+      customerCreate(input: $input) {
+        customer { id }
+        userErrors { field message }
+      }
+    }`;
+  const variablesCreate = {
+    input: {
+      firstName: input.firstName,
+      email: input.email,
+      phone: input.phone,
+      tags: ["warranty-registered"],
+    },
+  };
+
+  const createResponse = await admin.graphql(mutationCreate, { variables: variablesCreate });
+  const createData = await createResponse.json();
+  console.log("[createOrUpdateShopifyCustomer] Create response:", JSON.stringify(createData, null, 2));
+
+  const userErrors = createData?.data?.customerCreate?.userErrors || [];
+  if (userErrors.length > 0) {
+    console.error("[createOrUpdateShopifyCustomer] Customer creation user errors:", userErrors);
+    console.log("[createOrUpdateShopifyCustomer] Falling back to phone lookup:", input.phone);
+    const fallbackId = await lookupCustomerByPhone(admin, input.phone);
+    if (fallbackId) {
+      console.log("[createOrUpdateShopifyCustomer] Fallback lookup succeeded. ID:", fallbackId);
+      return fallbackId;
+    }
+    throw new Error(
+      `Customer creation failed: ${userErrors.map((e: any) => e.message).join(", ")}`
+    );
+  }
+
+  const newCustomerId = createData?.data?.customerCreate?.customer?.id;
+  if (!newCustomerId) {
+    throw new Error("Customer creation returned no ID.");
+  }
+
+  console.log("[createOrUpdateShopifyCustomer] Customer created. ID:", newCustomerId);
+
+  // Send activation email invite
+  try {
+    const mutationInvite = `#graphql
+      mutation customerSendAccountInviteEmail($customerId: ID!) {
+        customerSendAccountInviteEmail(customerId: $customerId) {
+          customer { id }
+          userErrors { field message }
+        }
+      }`;
+    const inviteResponse = await admin.graphql(mutationInvite, { variables: { customerId: newCustomerId } });
+    const inviteData = await inviteResponse.json();
+    const inviteErrors = inviteData?.data?.customerSendAccountInviteEmail?.userErrors || [];
+    if (inviteErrors.length > 0) {
+      console.warn("[createOrUpdateShopifyCustomer] Send invite user errors:", inviteErrors);
+    }
+  } catch (inviteErr) {
+    console.warn("[createOrUpdateShopifyCustomer] Activation invite failed (non-critical):", inviteErr);
+  }
+
+  return newCustomerId;
+}
+
+// ---- Helper: Ensure warranty-registered tag is on the customer ----
+// Uses tagsAdd so it never overwrites existing tags.
+async function tagCustomerWarrantyRegistered(
+  admin: any,
+  customerId: string
+): Promise<void> {
+  try {
+    const response = await admin.graphql(
+      `#graphql
+      mutation tagsAdd($id: ID!, $tags: [String!]!) {
+        tagsAdd(id: $id, tags: $tags) {
+          userErrors { field message }
+        }
+      }`,
+      { variables: { id: customerId, tags: ["warranty-registered"] } }
+    );
+    const data = await response.json();
+    const errors = data?.data?.tagsAdd?.userErrors || [];
+    if (errors.length > 0) {
+      console.warn("[tagCustomerWarrantyRegistered] userErrors:", errors);
+    }
+  } catch (err) {
+    console.warn("[tagCustomerWarrantyRegistered] Failed (non-critical):", err);
+  }
+}
+</file>
+
+<file path="app/routes/webhooks.customers.update.tsx">
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
+import { unauthenticated } from "../shopify.server";
+import prisma from "../db.server";
+import { sendWarrantySms } from "../services/infobip.server";
+import { normalizePhone } from "../utils/twilio.server";
+
+/**
+ * CUSTOMERS_UPDATE webhook — fires every time Shopify updates a customer record,
+ * including when Shopify Flow adds the "voucher-ready:<TIER>:<CODE>" tag.
+ *
+ * Flow tag format:  voucher-ready:WARRANTY15:WARRANTY15-12345678
+ *                   voucher-ready:WELCOME10:WELCOME10-12345678
+ *
+ * This handler:
+ *  1. Detects the voucher-ready tag on the incoming payload
+ *  2. Sends an SMS via Infobip with the embedded discount code
+ *  3. Logs the result to SMSLog
+ *  4. Removes the voucher-ready tag from the customer so it won't re-fire
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { shop, payload, topic } = await authenticate.webhook(request);
+  console.log(`[${topic}] received for shop=${shop}`);
+
+  const raw = payload as {
+    id: number;
+    first_name?: string;
+    phone?: string;
+    tags?: string;
+  };
+
+  const tags = (raw.tags ?? "")
+    .split(",")
+    .map((t: string) => t.trim())
+    .filter(Boolean);
+
+  const voucherTag = tags.find((t) => t.startsWith("voucher-ready:"));
+
+  if (!voucherTag) {
+    // Not a voucher update — nothing to do
+    return new Response(null, { status: 200 });
+  }
+
+  const parts = voucherTag.split(":");
+  if (parts.length !== 3) {
+    console.warn(`[${topic}] Malformed voucher tag "${voucherTag}" — skipping`);
+    return new Response(null, { status: 200 });
+  }
+
+  const [, , discountCode] = parts;
+  const customerPhone = raw.phone ?? "";
+  const firstName = raw.first_name ?? "Customer";
+
+  if (!customerPhone) {
+    console.warn(`[${topic}] Customer ${raw.id} has no phone — cannot send SMS`);
+    return new Response(null, { status: 200 });
+  }
+
+  const normalizedPhone = normalizePhone(customerPhone);
+  console.log(`[${topic}] Sending voucher SMS to ${normalizedPhone} code=${discountCode}`);
+
+  // Look up the most recent warranty registration for this phone to populate SMS fields
+  const registration = await prisma.warrantyRegistration.findFirst({
+    where: { phone: normalizedPhone },
+    orderBy: { createdAt: "desc" },
+    include: { products: true },
+  });
+
+  const productName = registration?.products?.[0]?.productTitle ?? "Geepas product";
+  const warrantyDays = 365;
+  const registrationId = registration?.id ?? `cust-${raw.id}`;
+  const registrationDate = registration?.createdAt ?? new Date();
+
+  const result = await sendWarrantySms({
+    phoneNumber: normalizedPhone,
+    customerName: firstName,
+    voucherCode: discountCode,
+    productName,
+    warrantyDays,
+    registrationId,
+    registrationDate,
+    voucherExpiryDays: 30,
+    lang: "ar",
+    shop,
+  });
+
+  // Persist SMS log — skip for duplicates (already logged on the original send)
+  if (!result.isDuplicate) {
+    try {
+      await prisma.sMSLog.create({
+        data: {
+          shop,
+          phone: normalizedPhone,
+          registrationId: registration?.id ?? null,
+          smsSent: result.success,
+          smsSentAt: result.success ? new Date(result.timestamp) : null,
+          smsProviderResponse: result.rawResponse ?? result.error ?? null,
+        },
+      });
+    } catch (dbErr) {
+      console.error(`[${topic}] SMSLog write failed (non-fatal):`, dbErr);
+    }
+  }
+
+  if (!result.success && !result.isDuplicate) {
+    console.error(`[${topic}] SMS failed for ${normalizedPhone}:`, result.error);
+    // Return 200 — Shopify won't retry on app-level errors and we've logged it.
+    // The voucher-ready tag is intentionally left on the customer so a manual
+    // retry (or future cron) can pick it up.
+    return new Response(null, { status: 200 });
+  }
+
+  if (result.isDuplicate) {
+    console.warn(`[${topic}] Dedup fired for ${normalizedPhone} — removing tag to prevent accumulation`);
+  } else {
+    console.log(`[${topic}] SMS sent. messageId=${result.messageId}`);
+
+    // Create CustomerReward on genuine success only (not dedup — it already exists).
+    try {
+      const [, tier, code] = voucherTag.split(":");
+      await prisma.customerReward.upsert({
+        where: {
+          shop_phone_rewardType: {
+            shop,
+            phone: normalizedPhone,
+            rewardType: tier,
+          },
+        },
+        update: {
+          discountCode: code,
+          sentAt: new Date(),
+        },
+        create: {
+          shop,
+          phone: normalizedPhone,
+          customerId: `gid://shopify/Customer/${raw.id}`,
+          rewardType: tier,
+          discountCode: code,
+          sentAt: new Date(),
+        },
+      });
+      console.log(`[${topic}] CustomerReward upserted for ${normalizedPhone} tier=${tier} code=${code}`);
+    } catch (rewardErr) {
+      // Non-fatal — customer received their SMS and code. Log and continue.
+      console.error(`[${topic}] CustomerReward upsert failed (non-fatal):`, rewardErr);
+    }
+  }
+
+  // Remove the voucher-ready tag so this webhook doesn't re-trigger on the
+  // next customer update
+  const remainingTags = tags.filter((t) => t !== voucherTag);
+
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+    const response = await admin.graphql(
+      `#graphql
+      mutation customerUpdate($input: CustomerInput!) {
+        customerUpdate(input: $input) {
+          customer { id tags }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          input: {
+            id: `gid://shopify/Customer/${raw.id}`,
+            tags: remainingTags,
+          },
+        },
+      },
+    );
+    const data = await response.json();
+    const errors = data?.data?.customerUpdate?.userErrors ?? [];
+    if (errors.length > 0) {
+      console.error(`[${topic}] Failed to remove voucher tag:`, errors);
+    } else {
+      console.log(`[${topic}] Removed tag "${voucherTag}" from customer ${raw.id}`);
+    }
+  } catch (err) {
+    console.error(`[${topic}] Tag removal error (non-fatal):`, err);
+  }
+
+  return new Response(null, { status: 200 });
+};
+</file>
+
 <file path="CHANGELOG.md">
 # @shopify/shopify-app-template-remix
 
@@ -5761,6 +6783,80 @@ Allow `SHOP_REDACT` webhook to process without admin context
 ## v2024.07.16
 
 Started tracking changes and releases using calver
+</file>
+
+<file path="shopify.app.toml">
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "41d1d7fae24939000bdbd2935ae8857f"
+name = "Warranty Registration"
+application_url = "https://geepas-warranty.vercel.app"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[webhooks]
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/update"
+  topics = [ "customers/update" ]
+  include_fields = [ "tags", "phone", "first_name", "id" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/customers/create"
+  topics = [ "customers/create" ]
+  include_fields = [ "id", "first_name", "phone", "tags" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/paid"
+  topics = [ "orders/paid" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_customers,read_metaobject_definitions,read_metaobjects,read_products,read_orders,write_customers,write_metaobject_definitions,write_metaobjects,write_discounts"
+[auth]
+redirect_urls = [ "https://geepas-warranty.vercel.app/auth/callback" ]
+</file>
+
+<file path=".github/workflows/ci.yml">
+on: [push, pull_request]
+
+name: CI
+
+jobs:
+  CI:
+    name: CI_Node_${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [20.19.0, 22, 24]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # pnpm/action-setup MUST come before actions/setup-node.
+      # setup-node@v5 reads packageManager from package.json and tries to locate
+      # pnpm during its own step — if pnpm isn't installed yet, it errors with
+      # "Unable to locate executable file: pnpm" before corepack enable can run.
+      - uses: pnpm/action-setup@v4
+        # version omitted — reads from package.json "packageManager" field (pnpm@10.27.0)
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ matrix.version }}
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
 </file>
 
 <file path="package.json">

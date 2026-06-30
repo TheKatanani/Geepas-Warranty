@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/twilio.server";
 import { issueRewardAndNotify } from "../services/reward.server";
 
@@ -19,24 +19,88 @@ import { issueRewardAndNotify } from "../services/reward.server";
  *   customer.orders_count — integer, total number of orders for this customer INCLUDING
  *                          the current one. Value of 1 means this is the first paid order.
  */
+
+type OrderPayload = {
+  id: number;
+  order_number?: number;
+  subtotal_price?: string;
+  currency?: string;
+  created_at?: string;
+  phone?: string;
+  shipping_address?: { phone?: string };
+  billing_address?: { phone?: string };
+  customer?: {
+    id: number;
+    first_name?: string;
+    phone?: string;
+    orders_count?: number;
+  };
+  line_items?: Array<{ title?: string }>;
+};
+
+/** Returns the first non-empty phone found across order-level and address fields. */
+function resolveOrderPhone(order: OrderPayload): string {
+  return (
+    order.customer?.phone ||
+    order.phone ||
+    order.shipping_address?.phone ||
+    order.billing_address?.phone ||
+    ""
+  );
+}
+
+/**
+ * Writes a normalized phone number to the Shopify customer record.
+ * Best-effort and non-fatal — phone uniqueness violations are logged and skipped.
+ * Note: this customerUpdate fires a customers/update webhook, but that handler is
+ * gated on voucher-ready: tags and safely no-ops here.
+ */
+async function saveCustomerPhone(
+  shop: string,
+  customerId: string,
+  normalizedPhone: string,
+): Promise<void> {
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+    const response = await admin.graphql(
+      `#graphql
+      mutation customerUpdate($input: CustomerInput!) {
+        customerUpdate(input: $input) {
+          customer { id phone }
+          userErrors { field code message }
+        }
+      }`,
+      { variables: { input: { id: customerId, phone: normalizedPhone } } },
+    );
+    const data = await response.json();
+    const userErrors: Array<{ field: string; code: string; message: string }> =
+      data?.data?.customerUpdate?.userErrors ?? [];
+    if (userErrors.length > 0) {
+      const taken = userErrors.some(
+        (e) => e.code === "TAKEN" || e.message.includes("has already been taken"),
+      );
+      if (taken) {
+        console.warn(
+          `[orders/paid] saveCustomerPhone: phone ${normalizedPhone} already taken by another customer — skipping`,
+        );
+      } else {
+        console.error(`[orders/paid] saveCustomerPhone userErrors:`, userErrors);
+      }
+    } else {
+      console.log(
+        `[orders/paid] saveCustomerPhone: saved phone ${normalizedPhone} to customer ${customerId}`,
+      );
+    }
+  } catch (err) {
+    console.error(`[orders/paid] saveCustomerPhone threw (non-fatal):`, err);
+  }
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload, topic } = await authenticate.webhook(request);
   console.log(`[orders/paid] ${topic} received for shop=${shop}`);
 
-  const order = payload as {
-    id: number;
-    order_number?: number;
-    subtotal_price?: string;
-    currency?: string;
-    created_at?: string;
-    customer?: {
-      id: number;
-      first_name?: string;
-      phone?: string;
-      orders_count?: number;
-    };
-    line_items?: Array<{ title?: string }>;
-  };
+  const order = payload as OrderPayload;
 
   // --- Extract order fields ---
   const subtotal = parseFloat(order.subtotal_price ?? "0");
@@ -53,7 +117,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(null, { status: 200 });
   }
 
-  const rawPhone = customer.phone ?? "";
+  // Resolve phone: customer record first, then order-level and address fields.
+  // customer.phone is null on first orders because Shopify only saves it after checkout.
+  const rawPhone = resolveOrderPhone(order);
   const customerName = customer.first_name ?? "Customer";
   const customerId = `gid://shopify/Customer/${customer.id}`;
   const ordersCount = customer.orders_count ?? 0;
@@ -70,6 +136,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const normalizedPhone = normalizePhone(rawPhone);
+
+  // --- Backfill phone on customer record if it was missing ---
+  // Applies on first orders where Shopify leaves customer.phone null but the
+  // delivery phone is present on the order/address.
+  if (!customer.phone) {
+    await saveCustomerPhone(shop, customerId, normalizedPhone);
+  }
 
   // ---- Voucher 1: subtotal >= 100,000 IQD → NEXT15 (15% off next order) --------
 

@@ -23,11 +23,13 @@ export interface IssueRewardParams {
   phone: string;             // already E.164-normalized
   customerName: string;
   productName: string;
-  registrationId: string;
+  registrationId: string;    // used in SMS message content; NOT written to SMSLog FK for order sends
   registrationDate: Date;
   rewardType: string;        // e.g. "WARRANTY15", "WELCOME10", "NEXT15", "SECOND15"
   discountPercentage: number; // e.g. 15, 10
   expiryDays?: number;       // days until discount expires; default 60
+  dedupeKey?: string;        // stable idempotency key for order-triggered sends (e.g. "second15:<customerId>")
+                             // when set: SMSLog.registrationId is stored as null (no FK), dedup checked before send
 }
 
 export interface IssueRewardResult {
@@ -80,6 +82,7 @@ export async function issueRewardAndNotify(
     rewardType,
     discountPercentage,
     expiryDays = 60,
+    dedupeKey,
   } = params;
 
   // Extract the legacy numeric ID from the Shopify GID so the code matches
@@ -88,8 +91,27 @@ export async function issueRewardAndNotify(
   const discountCode = `${rewardType}-${legacyId}`;
 
   console.log(
-    `${LOG} issueRewardAndNotify — shop=${shop} phone=${phone} code=${discountCode} rewardType=${rewardType}`,
+    `${LOG} issueRewardAndNotify — shop=${shop} phone=${phone} code=${discountCode} rewardType=${rewardType}` +
+    (dedupeKey ? ` dedupeKey=${dedupeKey}` : ""),
   );
+
+  // ---- 0. Dedup check for order-triggered sends --------------------------------
+  // For warranty-registration sends (no dedupeKey) the Infobip service handles
+  // dedup via SMSLog.smsSentAt window. For order sends we use the stable dedupeKey
+  // so dedup survives across restarts and multiple early-order webhook deliveries.
+
+  if (dedupeKey) {
+    try {
+      const existing = await prisma.sMSLog.findUnique({ where: { dedupeKey } });
+      if (existing) {
+        console.log(`${LOG} duplicate ${dedupeKey} — skipping SMS (already sent)`);
+        return { success: true, discountCode, messageId: undefined };
+      }
+    } catch (dedupErr) {
+      // Non-fatal: if the check fails, proceed rather than block the send.
+      console.warn(`${LOG} dedup check threw (proceeding):`, dedupErr);
+    }
+  }
 
   // ---- 1. Create Shopify discount code ----------------------------------------
 
@@ -190,16 +212,38 @@ export async function issueRewardAndNotify(
 
   if (!smsResult.isDuplicate) {
     try {
-      await prisma.sMSLog.create({
-        data: {
-          shop,
-          phone,
-          registrationId: registrationId ?? null,
-          smsSent: smsResult.success,
-          smsSentAt: smsResult.success ? new Date(smsResult.timestamp) : null,
-          smsProviderResponse: smsResult.rawResponse ?? smsResult.error ?? null,
-        },
-      });
+      // For order-triggered sends (dedupeKey set): registrationId must be null —
+      // the synthetic "order-xxx-second15" string is not a WarrantyRegistration PK
+      // and would violate the FK constraint even though the column is nullable.
+      const smsLogRegistrationId = dedupeKey ? null : (registrationId ?? null);
+
+      if (dedupeKey) {
+        // Use upsert so a race between two webhook deliveries can't double-insert.
+        await prisma.sMSLog.upsert({
+          where: { dedupeKey },
+          update: {},
+          create: {
+            shop,
+            phone,
+            registrationId: null,
+            dedupeKey,
+            smsSent: smsResult.success,
+            smsSentAt: smsResult.success ? new Date(smsResult.timestamp) : null,
+            smsProviderResponse: smsResult.rawResponse ?? smsResult.error ?? null,
+          },
+        });
+      } else {
+        await prisma.sMSLog.create({
+          data: {
+            shop,
+            phone,
+            registrationId: smsLogRegistrationId,
+            smsSent: smsResult.success,
+            smsSentAt: smsResult.success ? new Date(smsResult.timestamp) : null,
+            smsProviderResponse: smsResult.rawResponse ?? smsResult.error ?? null,
+          },
+        });
+      }
     } catch (logErr) {
       console.error(`${LOG} SMSLog write failed (non-fatal):`, logErr);
     }

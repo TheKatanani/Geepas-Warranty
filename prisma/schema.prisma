@@ -92,6 +92,7 @@ model SMSLog {
   phone               String
   registrationId      String?
   rewardId            String?
+  dedupeKey           String?   @unique // stable idempotency key for order-triggered SMS
   smsSent             Boolean   @default(false)
   smsSentAt           DateTime?
   smsProviderResponse String? // API response or error log details

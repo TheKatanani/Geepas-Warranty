@@ -159,6 +159,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         rewardType: "SECOND15",
         discountPercentage: 15,
         expiryDays: 60,
+        dedupeKey: `second15:${customerId}`,
       });
       if (result.success) {
         console.log(
@@ -191,6 +192,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           rewardType: "NEXT15",
           discountPercentage: 15,
           expiryDays: 60,
+          dedupeKey: `next15:${orderId}`,
         });
         if (result.success) {
           console.log(

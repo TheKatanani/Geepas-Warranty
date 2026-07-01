@@ -116,6 +116,8 @@ async function sendOnce(
     ],
   };
 
+  console.log(`[Infobip/sendOnce] POST ${url} → ${phone}`);
+
   // Timeout via Promise.race — intentionally avoids AbortController.
   //
   // Why not AbortController: aborting a fetch after the Response object is
@@ -171,6 +173,7 @@ async function sendOnce(
   }
 
   if (!response.ok) {
+    console.error(`[Infobip/sendOnce] HTTP ${response.status} for ${phone} — body: ${raw}`);
     return {
       success: false,
       error: `Infobip HTTP ${response.status}`,
@@ -196,9 +199,11 @@ async function sendOnce(
   }
 
   // Infobip may return 200 with an error status inside the payload
+  const errDesc = msg?.status?.description ?? `Unexpected Infobip status: ${status}`;
+  console.error(`[Infobip/sendOnce] Non-success status for ${phone} — ${errDesc} — body: ${raw}`);
   return {
     success: false,
-    error: msg?.status?.description ?? `Unexpected Infobip status: ${status}`,
+    error: errDesc,
     rawResponse: raw,
   };
 }

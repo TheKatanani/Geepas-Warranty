@@ -147,18 +147,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.log(
       `[voucher3] first order for customer ${customer.id} — issuing SECOND15`,
     );
-    issueRewardAndNotify({
-      shop,
-      customerId,
-      phone: normalizedPhone,
-      customerName,
-      productName,
-      registrationId: `order-${orderId}-second15`,
-      registrationDate: orderDate,
-      rewardType: "SECOND15",
-      discountPercentage: 15,
-      expiryDays: 60,
-    }).then((result) => {
+    try {
+      const result = await issueRewardAndNotify({
+        shop,
+        customerId,
+        phone: normalizedPhone,
+        customerName,
+        productName,
+        registrationId: `order-${orderId}-second15`,
+        registrationDate: orderDate,
+        rewardType: "SECOND15",
+        discountPercentage: 15,
+        expiryDays: 60,
+      });
       if (result.success) {
         console.log(
           `[voucher3] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
@@ -169,27 +170,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           result.error,
         );
       }
-    }).catch((err) => {
+    } catch (err) {
       console.error(`[voucher3] issueRewardAndNotify threw for order ${orderNumber}:`, err);
-    });
+    }
   } else {
     // ---- Voucher 1: repeat order, subtotal >= 100,000 IQD → NEXT15 --------------
     if (subtotal >= 100000) {
       console.log(
         `[voucher1] subtotal ${subtotal} ${currency} >= 100000 — issuing NEXT15 for customer ${customer.id}`,
       );
-      issueRewardAndNotify({
-        shop,
-        customerId,
-        phone: normalizedPhone,
-        customerName,
-        productName,
-        registrationId: `order-${orderId}-next15`,
-        registrationDate: orderDate,
-        rewardType: "NEXT15",
-        discountPercentage: 15,
-        expiryDays: 60,
-      }).then((result) => {
+      try {
+        const result = await issueRewardAndNotify({
+          shop,
+          customerId,
+          phone: normalizedPhone,
+          customerName,
+          productName,
+          registrationId: `order-${orderId}-next15`,
+          registrationDate: orderDate,
+          rewardType: "NEXT15",
+          discountPercentage: 15,
+          expiryDays: 60,
+        });
         if (result.success) {
           console.log(
             `[voucher1] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
@@ -200,9 +202,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             result.error,
           );
         }
-      }).catch((err) => {
+      } catch (err) {
         console.error(`[voucher1] issueRewardAndNotify threw for order ${orderNumber}:`, err);
-      });
+      }
     } else {
       console.log(
         `[voucher1] subtotal ${subtotal} ${currency} < 100000 — skipping NEXT15`,
@@ -210,6 +212,5 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  // Always return 200 immediately — reward work runs in the background.
   return new Response(null, { status: 200 });
 };

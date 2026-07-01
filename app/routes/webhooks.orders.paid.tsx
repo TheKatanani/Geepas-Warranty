@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/twilio.server";
 import { issueRewardAndNotify } from "../services/reward.server";
+import prisma from "../db.server";
 
 /**
  * ORDERS_PAID webhook — fires when payment is captured on an order.
@@ -137,15 +138,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // ---- Voucher logic: first order vs. repeat order (mutually exclusive) ---------
-  // ordersCount is the customer's order count BEFORE the current order.
-  // ordersCount === 0 means this IS the customer's first paid order.
+  // Shopify's ordersCount in the payload is unreliable (often 0 for repeat customers),
+  // so we decide "first order" from our own DB instead.
+  // A customer is a first-timer if they have never been issued SECOND15.
 
-  const isFirstOrder = (ordersCount ?? 0) === 0;
+  let alreadyGotSecond15 = false;
+  try {
+    const existing = await prisma.sMSLog.findUnique({
+      where: { dedupeKey: `second15:${customerId}` },
+    });
+    alreadyGotSecond15 = existing !== null;
+  } catch (dbErr) {
+    // Non-fatal: if the check fails, fall back to treating as first order (safe — dedup in
+    // issueRewardAndNotify will still prevent a double SECOND15 send via the upsert).
+    console.warn(`[orders/paid] DB check for SECOND15 threw (defaulting to first-order path):`, dbErr);
+  }
 
-  if (isFirstOrder) {
+  console.log(
+    `[orders/paid] ordersCount=${ordersCount} (payload, for reference only) alreadyGotSecond15=${alreadyGotSecond15}`,
+  );
+
+  if (!alreadyGotSecond15) {
     // ---- Voucher 3: first paid order → SECOND15 (15% off second order) ----------
     console.log(
-      `[voucher3] first order for customer ${customer.id} — issuing SECOND15`,
+      `[voucher3] no prior SECOND15 for customer ${customer.id} — issuing SECOND15`,
     );
     try {
       const result = await issueRewardAndNotify({
@@ -175,7 +191,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.error(`[voucher3] issueRewardAndNotify threw for order ${orderNumber}:`, err);
     }
   } else {
-    // ---- Voucher 1: repeat order, subtotal >= 100,000 IQD → NEXT15 --------------
+    // ---- Voucher 1: repeat customer, subtotal >= 100,000 IQD → NEXT15 -----------
     if (subtotal >= 100000) {
       console.log(
         `[voucher1] subtotal ${subtotal} ${currency} >= 100000 — issuing NEXT15 for customer ${customer.id}`,

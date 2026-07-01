@@ -66,31 +66,23 @@ async function saveCustomerPhone(
       `#graphql
       mutation customerUpdate($input: CustomerInput!) {
         customerUpdate(input: $input) {
-          customer { id phone }
-          userErrors { field code message }
+          customer { id }
+          userErrors { field message }
         }
       }`,
       { variables: { input: { id: customerId, phone: normalizedPhone } } },
     );
     const data = await response.json();
-    const userErrors: Array<{ field: string; code: string; message: string }> =
+    const userErrors: Array<{ field: string; message: string }> =
       data?.data?.customerUpdate?.userErrors ?? [];
     if (userErrors.length > 0) {
-      const taken = userErrors.some(
-        (e) => e.code === "TAKEN" || e.message.includes("has already been taken"),
-      );
-      if (taken) {
-        console.warn(
-          `[orders/paid] saveCustomerPhone: phone ${normalizedPhone} already taken by another customer — skipping`,
-        );
-      } else {
-        console.error(`[orders/paid] saveCustomerPhone userErrors:`, userErrors);
-      }
-    } else {
-      console.log(
-        `[orders/paid] saveCustomerPhone: saved phone ${normalizedPhone} to customer ${customerId}`,
-      );
+      const messages = userErrors.map((e) => e.message).join("; ");
+      console.warn(`[orders/paid] saveCustomerPhone skipped: ${messages}`);
+      return;
     }
+    console.log(
+      `[orders/paid] saveCustomerPhone: saved phone ${normalizedPhone} to customer ${customerId}`,
+    );
   } catch (err) {
     console.error(`[orders/paid] saveCustomerPhone threw (non-fatal):`, err);
   }
@@ -144,49 +136,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     await saveCustomerPhone(shop, customerId, normalizedPhone);
   }
 
-  // ---- Voucher 1: subtotal >= 100,000 IQD → NEXT15 (15% off next order) --------
+  // ---- Voucher logic: first order vs. repeat order (mutually exclusive) ---------
+  // ordersCount is the customer's order count BEFORE the current order.
+  // ordersCount === 0 means this IS the customer's first paid order.
 
-  if (subtotal >= 100000) {
-    console.log(
-      `[voucher1] subtotal ${subtotal} ${currency} >= 100000 — issuing NEXT15 for customer ${customer.id}`,
-    );
-    issueRewardAndNotify({
-      shop,
-      customerId,
-      phone: normalizedPhone,
-      customerName,
-      productName,
-      registrationId: `order-${orderId}-next15`,
-      registrationDate: orderDate,
-      rewardType: "NEXT15",
-      discountPercentage: 15,
-      expiryDays: 60,
-    }).then((result) => {
-      if (result.success) {
-        console.log(
-          `[voucher1] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
-        );
-      } else {
-        console.error(
-          `[voucher1] issueRewardAndNotify failed for order ${orderNumber}:`,
-          result.error,
-        );
-      }
-    }).catch((err) => {
-      console.error(`[voucher1] issueRewardAndNotify threw for order ${orderNumber}:`, err);
-    });
-  } else {
-    console.log(
-      `[voucher1] subtotal ${subtotal} ${currency} < 100000 — skipping NEXT15`,
-    );
-  }
+  const isFirstOrder = (ordersCount ?? 0) === 0;
 
-  // ---- Voucher 3: first paid order (orders_count === 1) → SECOND15 --------------
-  // orders_count on the customer snapshot inside the orders/paid payload reflects
-  // the count at the moment of order payment, including the current order.
-  // orders_count === 1 therefore means this IS the customer's first paid order.
-
-  if (ordersCount === 1) {
+  if (isFirstOrder) {
+    // ---- Voucher 3: first paid order → SECOND15 (15% off second order) ----------
     console.log(
       `[voucher3] first order for customer ${customer.id} — issuing SECOND15`,
     );
@@ -216,9 +173,41 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       console.error(`[voucher3] issueRewardAndNotify threw for order ${orderNumber}:`, err);
     });
   } else {
-    console.log(
-      `[voucher3] ordersCount=${ordersCount} — not first order, skipping SECOND15`,
-    );
+    // ---- Voucher 1: repeat order, subtotal >= 100,000 IQD → NEXT15 --------------
+    if (subtotal >= 100000) {
+      console.log(
+        `[voucher1] subtotal ${subtotal} ${currency} >= 100000 — issuing NEXT15 for customer ${customer.id}`,
+      );
+      issueRewardAndNotify({
+        shop,
+        customerId,
+        phone: normalizedPhone,
+        customerName,
+        productName,
+        registrationId: `order-${orderId}-next15`,
+        registrationDate: orderDate,
+        rewardType: "NEXT15",
+        discountPercentage: 15,
+        expiryDays: 60,
+      }).then((result) => {
+        if (result.success) {
+          console.log(
+            `[voucher1] reward issued — code=${result.discountCode} messageId=${result.messageId}`,
+          );
+        } else {
+          console.error(
+            `[voucher1] issueRewardAndNotify failed for order ${orderNumber}:`,
+            result.error,
+          );
+        }
+      }).catch((err) => {
+        console.error(`[voucher1] issueRewardAndNotify threw for order ${orderNumber}:`, err);
+      });
+    } else {
+      console.log(
+        `[voucher1] subtotal ${subtotal} ${currency} < 100000 — skipping NEXT15`,
+      );
+    }
   }
 
   // Always return 200 immediately — reward work runs in the background.

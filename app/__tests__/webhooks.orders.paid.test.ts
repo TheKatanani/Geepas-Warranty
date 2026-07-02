@@ -19,7 +19,8 @@ vi.mock("../services/reward.server", () => ({
 import { authenticate, unauthenticated } from "../shopify.server";
 import prisma from "../db.server";
 import { issueRewardAndNotify } from "../services/reward.server";
-import { action, resolveOrderPhone, saveCustomerPhone } from "./webhooks.orders.paid";
+import { action } from "../routes/webhooks.orders.paid";
+import { resolveOrderPhone, saveCustomerPhone } from "../lib/webhooks.orders.paid.server";
 
 const webhookMock = authenticate.webhook as unknown as Mock;
 const adminMock = unauthenticated.admin as unknown as Mock;

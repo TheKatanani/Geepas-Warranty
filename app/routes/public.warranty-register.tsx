@@ -55,7 +55,8 @@ const T = {
   en: {
     toggleLang: "العربية",
     pageTitle: "Warranty Registration",
-    pageSubtitle: "Register your Geepas product to activate your warranty coverage",
+    pageSubtitle:
+      "Register your Geepas product to activate your warranty coverage",
     steps: ["Phone", "Details", "Products", "Review"] as const,
     step1Title: "Enter your mobile number",
     step1Desc: "We'll check if you already have an account with us.",
@@ -469,7 +470,7 @@ const GEEPAS_CSS = `
     line-height: 1;
   }
   .gw-btn:hover:not(:disabled)  { background: #2a2e31; }
-  .gw-btn:active:not(:disabled) { background: #a8151a; }
+  .gw-btn:active:not(:disabled) { background: #292d2f; }
   .gw-btn:disabled              { opacity: 0.55; cursor: not-allowed; }
 
   .gw-btn--sec {
@@ -690,8 +691,7 @@ const GEEPAS_CSS = `
   }
   .gw-page--embed .gw-card {
     border-radius: 0;
-    box-shadow: none;
-    margin: 0;
+    box-shadow: none; 
     min-height: unset;
   }
 `;
@@ -1006,7 +1006,10 @@ export default function WarrantyRegister() {
 
   // ---- Render ----
   return (
-    <div className={`gw-page${isEmbed ? " gw-page--embed" : ""}`} dir={isRTL ? "rtl" : "ltr"}>
+    <div
+      className={`gw-page${isEmbed ? " gw-page--embed" : ""}`}
+      dir={isRTL ? "rtl" : "ltr"}
+    >
       {/* Embedded brand CSS */}
       <style dangerouslySetInnerHTML={{ __html: GEEPAS_CSS }} />
 
@@ -1016,7 +1019,9 @@ export default function WarrantyRegister() {
           <div className="gw-header-top">
             <div className="gw-logo">
               <span className="gw-logo-wordmark">GEEPAS</span>
-              <span className="gw-logo-tagline">From Our Home to Your Home</span>
+              <span className="gw-logo-tagline">
+                From Our Home to Your Home
+              </span>
             </div>
             <button
               className="gw-lang-btn"
@@ -1037,14 +1042,20 @@ export default function WarrantyRegister() {
             <div className="gw-progress">
               {steps.map((step, i) => (
                 <div key={step} className="gw-p-step">
-                  <div className={`gw-p-dot${i <= currentIndex ? " gw-p-dot--on" : ""}`}>
+                  <div
+                    className={`gw-p-dot${i <= currentIndex ? " gw-p-dot--on" : ""}`}
+                  >
                     {i < currentIndex ? "✓" : i + 1}
                   </div>
-                  <span className={`gw-p-label${i <= currentIndex ? " gw-p-label--on" : ""}`}>
+                  <span
+                    className={`gw-p-label${i <= currentIndex ? " gw-p-label--on" : ""}`}
+                  >
                     {stepLabels[i]}
                   </span>
                   {i < steps.length - 1 && (
-                    <div className={`gw-p-line${i < currentIndex ? " gw-p-line--on" : ""}`} />
+                    <div
+                      className={`gw-p-line${i < currentIndex ? " gw-p-line--on" : ""}`}
+                    />
                   )}
                 </div>
               ))}
@@ -1133,7 +1144,9 @@ export default function WarrantyRegister() {
                       .filter(Boolean)
                       .join(" ")}
                   />
-                  {errors.fullName && <p className="gw-err">{errors.fullName}</p>}
+                  {errors.fullName && (
+                    <p className="gw-err">{errors.fullName}</p>
+                  )}
                 </div>
 
                 {/* Email */}
@@ -1200,7 +1213,8 @@ export default function WarrantyRegister() {
                 {/* Purchase Date */}
                 <div className="gw-field">
                   <label htmlFor="reg-purchaseDate" className="gw-label">
-                    {t.purchaseDateLabel} <span className="gw-req">{t.required}</span>
+                    {t.purchaseDateLabel}{" "}
+                    <span className="gw-req">{t.required}</span>
                   </label>
                   <input
                     id="reg-purchaseDate"

@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 import { issueRewardAndNotify } from "../services/reward.server";
 
 
@@ -58,6 +58,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return json({ errors: ["Valid phone number is required."] }, { status: 400 });
+    }
 
     // --- Resolve Shopify Customer ---
     let customerId: string;

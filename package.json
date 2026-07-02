@@ -14,6 +14,8 @@
     "setup": "prisma generate && prisma migrate deploy",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite"
@@ -51,7 +53,8 @@
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
     "typescript": "^5.2.2",
-    "vite": "^6.2.2"
+    "vite": "^6.2.2",
+    "vitest": "^3.2.6"
   },
   "workspaces": {
     "packages": [

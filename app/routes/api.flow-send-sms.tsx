@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 import { sendWarrantySms } from "../services/infobip.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 
 /**
  * POST /api/flow-send-sms
@@ -80,6 +80,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // --- 5. Normalize phone ---
   const normalizedPhone = normalizePhone(phone!);
   console.log(`${LOG} normalized phone: ${phone} → ${normalizedPhone}`);
+
+  if (!normalizedPhone) {
+    console.warn(`${LOG} 400 — phone "${phone}" failed to normalize`);
+    return json({ error: `Invalid phone number: "${phone}"` }, { status: 400 });
+  }
 
   // --- 6. Look up warranty registration for SMS content (non-fatal if missing) ---
   let productName = "Geepas product";

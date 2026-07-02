@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 
 /**
  * POST /api/reward/record-welcome
@@ -28,6 +28,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+    if (!normalizedPhone) {
+      return json({ error: "Invalid phone number." }, { status: 400 });
+    }
 
     // Check if already exists
     const existing = await prisma.customerReward.findUnique({

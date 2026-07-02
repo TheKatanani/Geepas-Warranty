@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { unauthenticated } from "../shopify.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 
 /**
  * GET /api/customer-lookup?phone=07701234567&shop=store.myshopify.com
@@ -24,6 +24,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   console.log("[customer-lookup] Incoming phone:", phone);
   const normalized = normalizePhone(phone);
   console.log("[customer-lookup] Normalized phone:", normalized);
+
+  if (!normalized) {
+    return json({ exists: false, lookupFailed: true, error: "Invalid phone number" });
+  }
 
   try {
     const { admin } = await unauthenticated.admin(shop);

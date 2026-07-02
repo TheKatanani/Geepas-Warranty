@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 import { issueRewardAndNotify } from "../services/reward.server";
 import prisma from "../db.server";
 
@@ -40,7 +40,7 @@ type OrderPayload = {
 };
 
 /** Returns the first non-empty phone found across order-level and address fields. */
-function resolveOrderPhone(order: OrderPayload): string {
+export function resolveOrderPhone(order: OrderPayload): string {
   return (
     order.customer?.phone ||
     order.phone ||
@@ -56,7 +56,7 @@ function resolveOrderPhone(order: OrderPayload): string {
  * Note: this customerUpdate fires a customers/update webhook, but that handler is
  * gated on voucher-ready: tags and safely no-ops here.
  */
-async function saveCustomerPhone(
+export async function saveCustomerPhone(
   shop: string,
   customerId: string,
   normalizedPhone: string,
@@ -129,6 +129,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const normalizedPhone = normalizePhone(rawPhone);
+  if (!normalizedPhone) {
+    console.log(
+      `[orders/paid] customer ${customer.id} phone "${rawPhone}" failed to normalize — skipping all vouchers`,
+    );
+    return new Response(null, { status: 200 });
+  }
 
   // --- Backfill phone on customer record if it was missing ---
   // Applies on first orders where Shopify leaves customer.phone null but the

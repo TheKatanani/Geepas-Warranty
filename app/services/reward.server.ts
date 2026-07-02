@@ -206,6 +206,7 @@ export async function issueRewardAndNotify(
     voucherExpiryDays: expiryDays,
     lang: "ar",
     shop,
+    rewardType,
   });
 
   // ---- 3. Persist SMSLog (skip on dedup — already logged on the original send) ---

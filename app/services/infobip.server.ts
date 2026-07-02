@@ -10,7 +10,7 @@
  */
 
 import prisma from "../db.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 
 const INFOBIP_API_KEY = process.env.INFOBIP_API_KEY ?? "";
 const INFOBIP_BASE_URL = (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, "");
@@ -33,6 +33,9 @@ export interface InfobipSmsParams {
   voucherExpiryDays?: number; // defaults to 30
   lang?: "ar" | "en";        // defaults to "ar"
   shop?: string;             // required for DB dedup check
+  rewardType?: string;       // "SECOND15" | "NEXT15" | "WARRANTY..." — selects the SMS template.
+                              // Undefined (warranty-form registrations) or any WARRANTY* value
+                              // uses the warranty template; SECOND15/NEXT15 use the discount template.
 }
 
 export interface InfobipSmsResult {
@@ -56,8 +59,25 @@ function buildMessage(params: InfobipSmsParams): string {
     registrationDate,
     voucherExpiryDays = 30,
     lang = "ar",
+    rewardType,
   } = params;
 
+  // Order-triggered discount rewards get their own template — they have no
+  // warranty fields, so they must never fall through to the warranty template
+  // (which would put the reward id in the رقم الضمان slot).
+  if (rewardType === "SECOND15") {
+    return lang === "ar"
+      ? `مرحباً ${customerName}، شكراً لطلبك من Geepas! كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`
+      : `Hello ${customerName}, thank you for your order from Geepas! Here's your 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+  }
+
+  if (rewardType === "NEXT15") {
+    return lang === "ar"
+      ? `مرحباً ${customerName}، شكراً لثقتك المستمرة بـ Geepas! حصلت على كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`
+      : `Hello ${customerName}, thank you for continuing to shop with Geepas! You've earned a 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+  }
+
+  // Default: warranty-registration template (rewardType undefined or WARRANTY*)
   const dateStr = registrationDate.toLocaleDateString(
     lang === "ar" ? "ar-IQ" : "en-GB",
     { year: "numeric", month: "long", day: "numeric" },
@@ -226,10 +246,8 @@ export async function sendWarrantySms(
   const timestamp = new Date().toISOString();
 
   // --- Normalise phone ---
-  let phone: string;
-  try {
-    phone = normalizePhone(params.phoneNumber);
-  } catch {
+  const phone = normalizePhone(params.phoneNumber);
+  if (!phone) {
     const err = `Invalid phone number: "${params.phoneNumber}"`;
     console.error(`[Infobip] ${err}`);
     return { success: false, phone: params.phoneNumber, timestamp, error: err };

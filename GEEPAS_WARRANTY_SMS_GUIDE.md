@@ -167,7 +167,7 @@ SELECT * FROM "SMSLog" WHERE "smsSent" = false ORDER BY "smsSentAt" DESC;
 
 ## Phone Number Normalization
 
-`normalizePhone()` in `app/utils/twilio.server.ts` converts any Iraqi format to E.164:
+`normalizePhone()` in `app/utils/phone.server.ts` converts any Iraqi format to E.164:
 
 | Input          | Output          |
 |----------------|-----------------|

@@ -3,7 +3,7 @@ import { authenticate } from "../shopify.server";
 import { unauthenticated } from "../shopify.server";
 import prisma from "../db.server";
 import { sendWarrantySms } from "../services/infobip.server";
-import { normalizePhone } from "../utils/twilio.server";
+import { normalizePhone } from "../utils/phone.server";
 
 /**
  * CUSTOMERS_UPDATE webhook — fires every time Shopify updates a customer record,
@@ -57,6 +57,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   const normalizedPhone = normalizePhone(customerPhone);
+  if (!normalizedPhone) {
+    console.warn(`[${topic}] Customer ${raw.id} phone "${customerPhone}" failed to normalize — skipping SMS`);
+    return new Response(null, { status: 200 });
+  }
   console.log(`[${topic}] Sending voucher SMS to ${normalizedPhone} code=${discountCode}`);
 
   // Look up the most recent warranty registration for this phone to populate SMS fields

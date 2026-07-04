@@ -233,7 +233,7 @@ function buildContactBody(
   if (payload.shipping_address) body.shipping_address = payload.shipping_address;
 
   // Build custom_fields array:
-  //   - Always: cf_shopify_customer_id (idempotency key) + cf_customer_source
+  //   - Always: cf_customer_source + cf_shopify_customer_id (idempotency key)
   //   - On CREATE only: mandatory org fields with safe defaults
   const customFields: Array<{ api_name: string; value: string | number }> = [
     { api_name: "cf_customer_source",    value: "Shopify" },

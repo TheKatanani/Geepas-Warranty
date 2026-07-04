@@ -189,17 +189,42 @@ async function findExistingContact(
 }
 
 // ---------------------------------------------------------------------------
+// Mandatory custom field defaults for Shopify-sourced contacts (CREATE only)
+//
+// These five fields are required by this Zoho org's contact schema.
+// Defaults represent a safe baseline for online/Shopify customers.
+// Clients can override them later via the Zoho UI or a follow-up API call.
+//
+//   cf_category_type        — product mix category  (ELE | LHH | MIX)
+//   cf_customer_type        — payment terms         (Credit  | Cash | Consignment | Direct)
+//   cf_credit_limit         — credit ceiling in org currency
+//   cf_back_margin_rebate   — back-margin rebate %
+//   cf_front_margin_rebate  — front-margin rebate %
+// ---------------------------------------------------------------------------
+
+const CREATE_MANDATORY_CUSTOM_FIELDS = [
+  { api_name: "cf_category_type",       value: "MIX"  },
+  { api_name: "cf_customer_type",       value: "Cash" },
+  { api_name: "cf_credit_limit",        value: 0      },
+  { api_name: "cf_back_margin_rebate",  value: 0      },
+  { api_name: "cf_front_margin_rebate", value: 0      },
+] as const;
+
+// ---------------------------------------------------------------------------
 // Build the Zoho contact body — strips undefined/empty, sets custom fields
 // ---------------------------------------------------------------------------
 
-function buildContactBody(payload: ZohoCustomerPayload): Record<string, unknown> {
+function buildContactBody(
+  payload: ZohoCustomerPayload,
+  mode: "create" | "update",
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
     contact_type: payload.customer_type ?? "individual",
     customer_source: payload.customer_source ?? "Shopify",
   };
 
-  // Only include email/phone when they have a real value
+  // Only include email/phone when they have a real value — never send "" or "undefined"
   if (payload.email) body.email = payload.email;
   if (payload.phone) body.phone = payload.phone;
   if (payload.notes) body.notes = payload.notes;
@@ -207,12 +232,18 @@ function buildContactBody(payload: ZohoCustomerPayload): Record<string, unknown>
   if (payload.billing_address) body.billing_address = payload.billing_address;
   if (payload.shipping_address) body.shipping_address = payload.shipping_address;
 
-  // Store Shopify customer ID as a custom field so we can look it up later
-  if (payload.shopify_customer_id) {
-    body.custom_fields = [
-      { api_name: "cf_shopify_customer_id", value: payload.shopify_customer_id },
-    ];
-  }
+  // Build custom_fields array:
+  //   - Always: cf_shopify_customer_id (idempotency key) + cf_customer_source
+  //   - On CREATE only: mandatory org fields with safe defaults
+  const customFields: Array<{ api_name: string; value: string | number }> = [
+    { api_name: "cf_customer_source",    value: "Shopify" },
+    ...(payload.shopify_customer_id
+      ? [{ api_name: "cf_shopify_customer_id", value: payload.shopify_customer_id }]
+      : []),
+    ...(mode === "create" ? CREATE_MANDATORY_CUSTOM_FIELDS : []),
+  ];
+
+  body.custom_fields = customFields;
 
   return body;
 }
@@ -226,17 +257,24 @@ async function createZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
+  const body = buildContactBody(payload, "create");
+
   const res = await fetch(`${API_BASE}/contacts?organization_id=${orgId}`, {
     method: "POST",
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ contact: buildContactBody(payload) }),
+    body: JSON.stringify({ contact: body }),
   });
 
   const raw = await res.text();
-  if (!res.ok) throw new Error(`Zoho createCustomer HTTP ${res.status}: ${raw}`);
+
+  if (!res.ok) {
+    // Log the full response so we can identify which field Zoho rejected
+    console.error(`[Zoho] createCustomer HTTP ${res.status} — full response: ${raw}`);
+    throw new Error(`Zoho createCustomer HTTP ${res.status}: ${raw}`);
+  }
 
   let parsed: any;
   try { parsed = JSON.parse(raw); } catch {
@@ -244,6 +282,8 @@ async function createZohoCustomer(
   }
 
   if (parsed.code !== 0) {
+    // code 4 = invalid field value; log full body to see which field
+    console.error(`[Zoho] createCustomer error code ${parsed.code} — full response: ${raw}`);
     throw new Error(`Zoho createCustomer error code ${parsed.code}: ${parsed.message}`);
   }
 
@@ -269,11 +309,14 @@ async function updateZohoCustomer(
       Authorization: `Zoho-oauthtoken ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ contact: buildContactBody(payload) }),
+    body: JSON.stringify({ contact: buildContactBody(payload, "update") }),
   });
 
   const raw = await res.text();
-  if (!res.ok) throw new Error(`Zoho updateCustomer HTTP ${res.status}: ${raw}`);
+  if (!res.ok) {
+    console.error(`[Zoho] updateCustomer HTTP ${res.status} — full response: ${raw}`);
+    throw new Error(`Zoho updateCustomer HTTP ${res.status}: ${raw}`);
+  }
   return raw;
 }
 

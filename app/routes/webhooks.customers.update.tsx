@@ -4,6 +4,7 @@ import { unauthenticated } from "../shopify.server";
 import prisma from "../db.server";
 import { sendWarrantySms } from "../services/infobip.server";
 import { normalizePhone } from "../utils/phone.server";
+import { upsertZohoCustomer, resolveCustomerName } from "../services/zoho.server";
 
 /**
  * CUSTOMERS_UPDATE webhook — fires every time Shopify updates a customer record,
@@ -25,9 +26,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const raw = payload as {
     id: number;
     first_name?: string;
+    last_name?: string;
+    email?: string;
     phone?: string;
     tags?: string;
   };
+
+  // --- Sync to Zoho whenever a customer is updated (fire-and-forget) ---
+  // This keeps Zoho current when email/phone are added after initial creation
+  // (common in the OTP new-customer-accounts flow).
+  const { name: zohoName, resolvedBy: zohoNameSource } = resolveCustomerName({
+    firstName: raw.first_name,
+    lastName: raw.last_name,
+    email: raw.email,
+    phone: raw.phone,
+    shopifyCustomerId: raw.id,
+  });
+  console.log(`[${topic}] Zoho sync: customer ${raw.id} name="${zohoName}" (by ${zohoNameSource})`);
+
+  upsertZohoCustomer({
+    customer_name: zohoName,
+    ...(raw.email ? { email: raw.email } : {}),
+    ...(raw.phone ? { phone: raw.phone } : {}),
+    customer_source: "Shopify",
+    customer_type: "individual",
+    shopify_customer_id: String(raw.id),
+  }).then((r) => {
+    if (r.success) {
+      console.log(`[${topic}] Zoho sync ✓ contact=${r.zohoContactId} matchedBy=${r.matchedBy}`);
+    } else {
+      console.warn(`[${topic}] Zoho sync failed (non-fatal): ${r.error}`);
+    }
+  }).catch((err) => {
+    console.warn(`[${topic}] Zoho sync threw (non-fatal):`, err);
+  });
 
   const tags = (raw.tags ?? "")
     .split(",")

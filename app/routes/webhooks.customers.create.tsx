@@ -1,38 +1,46 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
-import { upsertZohoCustomer, type ZohoAddress } from "../services/zoho.server";
+import {
+  upsertZohoCustomer,
+  resolveCustomerName,
+  type ZohoAddress,
+} from "../services/zoho.server";
 
 /**
  * CUSTOMERS_CREATE webhook
  *
- * Fires when a new customer is created in Shopify (including via the warranty
- * registration form). Syncs the customer to Zoho Inventory as a contact with
- * customer_source = "Shopify".
+ * Fires when a new Shopify customer is created — including via the OTP /
+ * new-customer-accounts flow, which often arrives with email=null and
+ * first_name/last_name=null. The customer_name fallback chain handles this.
  *
- * Shopify webhook signature verification is handled automatically by
- * authenticate.webhook() — no manual HMAC check needed.
+ * Webhook HMAC verification: handled by authenticate.webhook() automatically.
  *
- * Register this webhook:
+ * Register:
  *   Topic:   customers/create
  *   Address: https://your-app.vercel.app/webhooks/customers/create
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload, topic } = await authenticate.webhook(request);
-  console.log(`[${topic}] received for shop=${shop}`);
 
-  const customer = payload as ShopifyCustomerPayload;
-  console.log(`[${topic}] customer id=${customer.id} email=${customer.email}`);
+  const c = payload as ShopifyCustomerPayload;
 
-  // Build display name — fall back gracefully if names are missing
-  const firstName = customer.first_name?.trim() ?? "";
-  const lastName = customer.last_name?.trim() ?? "";
-  const customerName =
-    [firstName, lastName].filter(Boolean).join(" ") ||
-    customer.email ||
-    `Customer ${customer.id}`;
+  // --- Resolve customer_name using the full fallback chain ---
+  const { name: customerName, resolvedBy } = resolveCustomerName({
+    firstName: c.first_name,
+    lastName: c.last_name,
+    email: c.email,
+    phone: c.phone,
+    shopifyCustomerId: c.id,
+  });
 
-  // Map Shopify default_address → Zoho billing address
-  const addr = customer.default_address;
+  console.log(
+    `[${topic}] shop=${shop} customer id=${c.id} ` +
+      `name="${customerName}" (resolved by: ${resolvedBy}) ` +
+      `email=${c.email ?? "—"} phone=${c.phone ?? "—"}`,
+  );
+
+  // --- Map Shopify address → Zoho billing address ---
+  const addr = c.default_address;
   const billingAddress: ZohoAddress | undefined = addr
     ? {
         attention: customerName,
@@ -42,32 +50,36 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         state: addr.province ?? undefined,
         zip: addr.zip ?? undefined,
         country: addr.country ?? undefined,
-        phone: addr.phone ?? customer.phone ?? undefined,
+        phone: addr.phone ?? c.phone ?? undefined,
       }
     : undefined;
 
-  // Retry up to 3 times with exponential back-off (1 s, 2 s)
+  // --- Retry up to 3× with exponential back-off ---
   const MAX_ATTEMPTS = 3;
   let lastError = "";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    console.log(`[${topic}] Zoho upsert attempt ${attempt}/${MAX_ATTEMPTS}`);
+    console.log(`[${topic}] Zoho upsert attempt ${attempt}/${MAX_ATTEMPTS} for customer ${c.id}`);
 
     const result = await upsertZohoCustomer({
       customer_name: customerName,
-      email: customer.email ?? undefined,
-      phone: customer.phone ?? undefined,
+      // Only set email/phone when they exist — never send empty strings
+      ...(c.email ? { email: c.email } : {}),
+      ...(c.phone ? { phone: c.phone } : {}),
       customer_source: "Shopify",
       customer_type: "individual",
       billing_address: billingAddress,
       shipping_address: billingAddress,
-      notes: `Shopify ID: ${customer.id} | Shop: ${shop}`,
+      shopify_customer_id: String(c.id),
+      notes: `Shopify ID: ${c.id} | Shop: ${shop}`,
     });
 
     if (result.success) {
       console.log(
         `[${topic}] ✓ Zoho ${result.alreadyExists ? "updated" : "created"} ` +
-          `contact ${result.zohoContactId} for Shopify customer ${customer.id}`,
+          `contact ${result.zohoContactId} ` +
+          `(matched by: ${result.matchedBy ?? "none"}) ` +
+          `for Shopify customer ${c.id}`,
       );
       return new Response(null, { status: 200 });
     }
@@ -80,10 +92,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   }
 
-  // All attempts failed. Return 200 so Shopify does not flood us with retries.
-  // Check Vercel logs and re-trigger manually from Shopify admin if needed.
+  // Return 200 even on total failure — non-200 causes Shopify to retry
+  // indefinitely, which would hammer Zoho during an outage.
+  // Recovery: Shopify Admin → Settings → Notifications → Webhooks → re-send.
   console.error(
-    `[${topic}] All ${MAX_ATTEMPTS} attempts failed for customer ${customer.id}: ${lastError}`,
+    `[${topic}] All ${MAX_ATTEMPTS} attempts failed for customer ${c.id}: ${lastError}`,
   );
   return new Response(null, { status: 200 });
 };

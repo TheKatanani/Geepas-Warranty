@@ -48,8 +48,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     customer_name: zohoName,
     ...(raw.email ? { email: raw.email } : {}),
     ...(raw.phone ? { phone: raw.phone } : {}),
-    customer_source: "Shopify",
-    customer_type: "individual",
     shopify_customer_id: String(raw.id),
   }).then((r) => {
     if (r.success) {

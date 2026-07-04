@@ -30,10 +30,8 @@ export interface ZohoCustomerPayload {
   /** Only include when a real value exists — never send "" or undefined */
   email?: string;
   phone?: string;
-  customer_source?: string;
   billing_address?: ZohoAddress;
   shipping_address?: ZohoAddress;
-  customer_type?: "business" | "individual";
   currency_code?: string;
   notes?: string;
   /**
@@ -220,8 +218,12 @@ function buildContactBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
-    contact_type: payload.customer_type ?? "individual",
-    customer_source: payload.customer_source ?? "Shopify",
+    // "customer" is the Zoho contact_type for buyers — NOT "individual" or "business".
+    // Those are Zoho Books concepts and are rejected by Zoho Inventory /contacts.
+    // Sending an invalid contact_type causes Zoho to return the misleading
+    // code 4 "Invalid value for Customer Name" error on the whole record.
+    contact_type: "customer",
+    customer_sub_type: "individual",
   };
 
   // Only include email/phone when they have a real value — never send "" or "undefined"

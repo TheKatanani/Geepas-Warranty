@@ -66,8 +66,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Only set email/phone when they exist — never send empty strings
       ...(c.email ? { email: c.email } : {}),
       ...(c.phone ? { phone: c.phone } : {}),
-      customer_source: "Shopify",
-      customer_type: "individual",
       billing_address: billingAddress,
       shipping_address: billingAddress,
       shopify_customer_id: String(c.id),

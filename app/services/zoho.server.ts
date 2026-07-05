@@ -65,7 +65,7 @@ let tokenCache: TokenCache | null = null;
 
 const REGION = (process.env.ZOHO_REGION ?? "com").replace(/^\./, "");
 const ACCOUNTS_URL = `https://accounts.zoho.${REGION}/oauth/v2/token`;
-const API_BASE = `https://inventory.zoho.${REGION}/api/v1`;
+const API_BASE = `https://www.zohoapis.${REGION}/inventory/v1`;
 
 async function getAccessToken(): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) {

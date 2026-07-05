@@ -140,9 +140,8 @@ async function fetchContactList(
   accessToken: string,
   orgId: string,
 ): Promise<string | null> {
-  const url = new URL(`${API_BASE}/contacts`);
+  const url = new URL(`${API_BASE}/customers`);
   url.searchParams.set("organization_id", orgId);
-  url.searchParams.set("contact_type", "customer");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
   const res = await fetch(url.toString(), {
@@ -151,8 +150,8 @@ async function fetchContactList(
 
   if (!res.ok) return null;
 
-  const data = await res.json() as { contacts?: Array<{ contact_id: string }> };
-  return data.contacts?.[0]?.contact_id ?? null;
+  const data = await res.json() as { customers?: Array<{ contact_id: string }> };
+  return data.customers?.[0]?.contact_id ?? null;
 }
 
 async function findExistingContact(
@@ -203,9 +202,9 @@ async function findExistingContact(
 const CREATE_MANDATORY_CUSTOM_FIELDS = [
   { api_name: "cf_category_type",       value: "MIX"  },
   { api_name: "cf_customer_type",       value: "Cash" },
-  { api_name: "cf_credit_limit",        value: 0      },
-  { api_name: "cf_back_margin_rebate",  value: 0      },
-  { api_name: "cf_front_margin_rebate", value: 0      },
+  { api_name: "cf_credit_limit",        value: "0"    },
+  { api_name: "cf_back_margin_rebate",  value: "0"    },
+  { api_name: "cf_front_margin_rebate", value: "0"    },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -216,16 +215,10 @@ function buildContactBody(
   payload: ZohoCustomerPayload,
   mode: "create" | "update",
 ): Record<string, unknown> {
+  // Zoho Inventory /customers uses "customer_name" — not "contact_name".
+  // contact_name and contact_type are Zoho Books /contacts concepts.
   const body: Record<string, unknown> = {
-    // Zoho Inventory /contacts uses "contact_name" as the field key.
-    // We ALSO send "customer_name" as an alias because Zoho's own error
-    // message says "Customer Name", suggesting it may validate that key too.
-    contact_name: payload.customer_name,
     customer_name: payload.customer_name,
-    // contact_type must be "customer" for buyer contacts in Zoho Inventory.
-    // Values "individual" / "business" are Zoho Books concepts and cause
-    // Zoho Inventory to return code 4 "Invalid value for Customer Name".
-    contact_type: "customer",
   };
 
   // Only include email/phone when they have a real value — never send "" or "undefined"
@@ -262,12 +255,11 @@ async function createZohoCustomer(
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
   const body = buildContactBody(payload, "create");
-  const requestBody = JSON.stringify({ contact: body });
+  const requestBody = JSON.stringify({ customer: body });
 
-  // Log exact request body so we can diagnose field-level rejections
   console.log(`[Zoho] createCustomer REQUEST body: ${requestBody}`);
 
-  const res = await fetch(`${API_BASE}/contacts?organization_id=${orgId}`, {
+  const res = await fetch(`${API_BASE}/customers?organization_id=${orgId}`, {
     method: "POST",
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -289,12 +281,11 @@ async function createZohoCustomer(
   }
 
   if (parsed.code !== 0) {
-    // code 4 = invalid field value; log full body to see which field
     console.error(`[Zoho] createCustomer error code ${parsed.code} — full response: ${raw}`);
     throw new Error(`Zoho createCustomer error code ${parsed.code}: ${parsed.message}`);
   }
 
-  const contactId = parsed.contact?.contact_id;
+  const contactId = parsed.customer?.contact_id;
   if (!contactId) throw new Error(`Zoho createCustomer returned no contact_id. Raw: ${raw}`);
 
   return { contactId, raw };
@@ -310,13 +301,16 @@ async function updateZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<string> {
-  const res = await fetch(`${API_BASE}/contacts/${contactId}?organization_id=${orgId}`, {
+  const requestBody = JSON.stringify({ customer: buildContactBody(payload, "update") });
+  console.log(`[Zoho] updateCustomer ${contactId} REQUEST body: ${requestBody}`);
+
+  const res = await fetch(`${API_BASE}/customers/${contactId}?organization_id=${orgId}`, {
     method: "PUT",
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ contact: buildContactBody(payload, "update") }),
+    body: requestBody,
   });
 
   const raw = await res.text();

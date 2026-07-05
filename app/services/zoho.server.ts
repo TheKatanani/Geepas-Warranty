@@ -403,6 +403,21 @@ function buildEnrichBody(payload: ZohoCustomerPayload): Record<string, unknown> 
 
   if (payload.notes) body.notes = payload.notes;
 
+  // When email is present on update, also ensure Zoho has a primary contact
+  // person with that email. This does not change top-level Zoho fields that
+  // the native integration manages (contact_name/pricebook/phone, etc.).
+  if (payload.email) {
+    body.contact_persons = [
+      {
+        ...(payload.first_name ? { first_name: payload.first_name } : {}),
+        ...(payload.last_name ? { last_name: payload.last_name } : {}),
+        email: payload.email,
+        ...(payload.phone ? { phone: payload.phone } : {}),
+        is_primary_contact: true,
+      },
+    ];
+  }
+
   body.custom_fields = [
     { api_name: "cf_customer_source", value: "Shopify" },
     ...(payload.shopify_customer_id

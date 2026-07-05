@@ -330,6 +330,34 @@ describe("buildEnrichBody (update path)", () => {
     expect(byName["cf_category_type"]).toBeUndefined();
     expect(byName["cf_customer_type"]).toBeUndefined();
   });
+
+  it("includes contact_persons with is_primary_contact on update when email is present", async () => {
+    const { calls } = mockFetch({ existingContactId: "existing-789" });
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({
+      customer_name: "Memo",
+      first_name: "Me",
+      last_name: "Mo",
+      email: "memo@example.com",
+      phone: "+972592263704",
+      shopify_customer_id: "11533125386531",
+    });
+
+    const put = calls.find((c) => c.method === "PUT" && c.url.includes("/contacts/"));
+    expect(put).toBeDefined();
+    const persons = put?.body?.contact_persons as Array<any> | undefined;
+    expect(Array.isArray(persons)).toBe(true);
+    expect(persons?.[0]?.is_primary_contact).toBe(true);
+    expect(persons?.[0]?.email).toBe("memo@example.com");
+    expect(persons?.[0]?.first_name).toBe("Me");
+    expect(persons?.[0]?.last_name).toBe("Mo");
+    expect(persons?.[0]?.phone).toBe("+972592263704");
+
+    // Still no top-level contact_name/pricebook in update
+    expect(put?.body?.contact_name).toBeUndefined();
+    expect(put?.body?.pricebook_id).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

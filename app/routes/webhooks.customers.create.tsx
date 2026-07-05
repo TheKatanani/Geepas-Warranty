@@ -24,10 +24,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const c = payload as ShopifyCustomerPayload;
 
+  // --- Derive missing first/last from default_address.name when possible ---
+  const addrName = c.default_address?.name?.trim() ?? "";
+  const nameParts = addrName ? addrName.split(/\s+/) : [];
+  const derivedFirst = c.first_name?.trim() || (nameParts[0] ?? "");
+  const derivedLast = c.last_name?.trim() || (nameParts.length > 1 ? nameParts.slice(1).join(" ") : "");
+
   // --- Resolve customer_name using the full fallback chain ---
   const { name: customerName, resolvedBy } = resolveCustomerName({
-    firstName: c.first_name,
-    lastName: c.last_name,
+    firstName: derivedFirst,
+    lastName: derivedLast,
     email: c.email,
     phone: c.phone,
     shopifyCustomerId: c.id,
@@ -63,8 +69,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const result = await upsertZohoCustomer({
       customer_name: customerName,
-      first_name: c.first_name ?? undefined,
-      last_name: c.last_name ?? undefined,
+      first_name: derivedFirst || undefined,
+      last_name: derivedLast || undefined,
       // Only set email/phone when they exist — never send empty strings
       ...(c.email ? { email: c.email } : {}),
       ...(c.phone ? { phone: c.phone } : {}),
@@ -113,6 +119,8 @@ interface ShopifyAddress {
   zip?: string | null;
   country?: string | null;
   phone?: string | null;
+  /** Shopify often includes the full name on the default address */
+  name?: string | null;
 }
 
 interface ShopifyCustomerPayload {

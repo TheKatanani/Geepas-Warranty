@@ -25,19 +25,28 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const raw = payload as {
     id: number;
-    first_name?: string;
-    last_name?: string;
-    email?: string;
-    phone?: string;
-    tags?: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    tags?: string | null;
+    default_address?: { name?: string | null } | null;
   };
 
   // --- Sync to Zoho whenever a customer is updated (fire-and-forget) ---
   // This keeps Zoho current when email/phone are added after initial creation
   // (common in the OTP new-customer-accounts flow).
+  const addrName = raw.default_address?.name?.trim() ?? "";
+  const parts = addrName ? addrName.split(/\s+/) : [];
+  const firstFromAddr = parts[0] ?? "";
+  const lastFromAddr = parts.length > 1 ? parts.slice(1).join(" ") : "";
+
+  const firstForDisplay = (raw.first_name ?? "").trim() || firstFromAddr;
+  const lastForDisplay = (raw.last_name ?? "").trim() || lastFromAddr;
+
   const { name: zohoName, resolvedBy: zohoNameSource } = resolveCustomerName({
-    firstName: raw.first_name,
-    lastName: raw.last_name,
+    firstName: firstForDisplay,
+    lastName: lastForDisplay,
     email: raw.email,
     phone: raw.phone,
     shopifyCustomerId: raw.id,
@@ -46,8 +55,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   upsertZohoCustomer({
     customer_name: zohoName,
-    first_name: raw.first_name ?? undefined,
-    last_name: raw.last_name ?? undefined,
+    first_name: firstForDisplay || undefined,
+    last_name: lastForDisplay || undefined,
     ...(raw.email ? { email: raw.email } : {}),
     ...(raw.phone ? { phone: raw.phone } : {}),
     shopify_customer_id: String(raw.id),
@@ -73,13 +82,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(null, { status: 200 });
   }
 
-  const parts = voucherTag.split(":");
-  if (parts.length !== 3) {
+  const voucherParts = voucherTag.split(":");
+  if (voucherParts.length !== 3) {
     console.warn(`[${topic}] Malformed voucher tag "${voucherTag}" — skipping`);
     return new Response(null, { status: 200 });
   }
 
-  const [, , discountCode] = parts;
+  const [, , discountCode] = voucherParts;
   const customerPhone = raw.phone ?? "";
   const firstName = raw.first_name ?? "Customer";
 

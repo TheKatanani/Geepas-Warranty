@@ -6,6 +6,7 @@ import prisma from "../db.server";
 import { sendWarrantySms } from "../services/infobip.server";
 import { normalizePhone } from "../utils/phone.server";
 import { upsertZohoCustomer, resolveCustomerName } from "../services/zoho.server";
+import { fetchCustomerFromAdmin } from "../lib/fetch-customer.server";
 
 /**
  * CUSTOMERS_UPDATE webhook — fires every time Shopify updates a customer record,
@@ -37,19 +38,46 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // --- Sync to Zoho whenever a customer is updated (fire-and-forget) ---
   // This keeps Zoho current when email/phone are added after initial creation
   // (common in the OTP new-customer-accounts flow).
-  const addrName = raw.default_address?.name?.trim() ?? "";
-  const parts = addrName ? addrName.split(/\s+/) : [];
-  const firstFromAddr = parts[0] ?? "";
-  const lastFromAddr = parts.length > 1 ? parts.slice(1).join(" ") : "";
+  //
+  // The webhook payload is GDPR-redacted (only id, first_name, phone — no
+  // email, no last_name), so we use the payload solely as a trigger and pull
+  // the authoritative fields from the Admin API using the existing offline
+  // session/admin client. Only fall back to the webhook payload's own
+  // first_name/last_name/email/default_address fields if that fetch fails.
+  let firstForDisplay = (raw.first_name ?? "").trim();
+  let lastForDisplay = (raw.last_name ?? "").trim();
+  let emailForZoho = raw.email ?? undefined;
+  let phoneForZoho = raw.phone ?? undefined;
 
-  const firstForDisplay = (raw.first_name ?? "").trim() || firstFromAddr;
-  const lastForDisplay = (raw.last_name ?? "").trim() || lastFromAddr;
+  try {
+    const customer = await fetchCustomerFromAdmin(shop, raw.id);
+    firstForDisplay = customer.firstName?.trim() || firstForDisplay;
+    lastForDisplay = customer.lastName?.trim() || lastForDisplay;
+    emailForZoho = customer.email ?? emailForZoho;
+    phoneForZoho = customer.phone ?? phoneForZoho;
+    console.log(
+      `[${topic}] Admin GraphQL fetch ✓ customer ${raw.id}: ` +
+        `firstName=${customer.firstName ?? "—"} lastName=${customer.lastName ?? "—"} ` +
+        `email=${customer.email ?? "—"} phone=${customer.phone ?? "—"}`,
+    );
+  } catch (err: any) {
+    const addrName = raw.default_address?.name?.trim() ?? "";
+    const parts = addrName ? addrName.split(/\s+/) : [];
+    const firstFromAddr = parts[0] ?? "";
+    const lastFromAddr = parts.length > 1 ? parts.slice(1).join(" ") : "";
+    firstForDisplay = firstForDisplay || firstFromAddr;
+    lastForDisplay = lastForDisplay || lastFromAddr;
+    console.warn(
+      `[${topic}] Admin GraphQL fetch failed for customer ${raw.id} — ` +
+        `falling back to webhook payload fields: ${err?.message ?? err}`,
+    );
+  }
 
   const { name: zohoName, resolvedBy: zohoNameSource } = resolveCustomerName({
     firstName: firstForDisplay,
     lastName: lastForDisplay,
-    email: raw.email,
-    phone: raw.phone,
+    email: emailForZoho,
+    phone: phoneForZoho,
     shopifyCustomerId: raw.id,
   });
   console.log(`[${topic}] Zoho sync: customer ${raw.id} name="${zohoName}" (by ${zohoNameSource})`);
@@ -58,8 +86,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     customer_name: zohoName,
     first_name: firstForDisplay || undefined,
     last_name: lastForDisplay || undefined,
-    ...(raw.email ? { email: raw.email } : {}),
-    ...(raw.phone ? { phone: raw.phone } : {}),
+    ...(emailForZoho ? { email: emailForZoho } : {}),
+    ...(phoneForZoho ? { phone: phoneForZoho } : {}),
     shopify_customer_id: String(raw.id),
   }).then((r) => {
     if (r.success) {

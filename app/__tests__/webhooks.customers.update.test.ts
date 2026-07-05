@@ -1,23 +1,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { Mock } from "vitest";
 
-// Mock authenticate.webhook to return a realistic *redacted* customers/create
-// payload — Shopify only sends id, first_name, phone (no email, no last_name).
 vi.mock("../shopify.server", () => ({
-  authenticate: {
-    webhook: vi.fn(async () => ({
-      shop: "test.myshopify.com",
-      topic: "customers/create",
-      payload: {
-        id: 1234567890,
-        first_name: "moha",
-        phone: "+972 59-226-3505",
-        default_address: null,
-      },
-    })),
+  authenticate: { webhook: vi.fn() },
+  unauthenticated: { admin: vi.fn() },
+}));
+
+vi.mock("../db.server", () => ({
+  default: {
+    warrantyRegistration: { findFirst: vi.fn().mockResolvedValue(null) },
+    sMSLog: { create: vi.fn() },
+    customerReward: { upsert: vi.fn() },
   },
 }));
 
-// Partially mock zoho.server to capture the upsert payload while keeping real name resolver
+vi.mock("../services/infobip.server", () => ({
+  sendWarrantySms: vi.fn(),
+}));
+
 const upsertSpy = vi.fn(async (_payload: any) => ({ success: true, alreadyExists: false, zohoContactId: "z-1" }));
 vi.mock("../services/zoho.server", async () => {
   const actual = await vi.importActual<any>("../services/zoho.server");
@@ -27,13 +27,25 @@ vi.mock("../services/zoho.server", async () => {
   };
 });
 
-// Mock the Admin GraphQL customer fetch helper
 const fetchCustomerSpy = vi.fn();
 vi.mock("../lib/fetch-customer.server", () => ({
   fetchCustomerFromAdmin: fetchCustomerSpy,
 }));
 
-describe("webhooks.customers.create", () => {
+import { authenticate } from "../shopify.server";
+
+const webhookMock = authenticate.webhook as unknown as Mock;
+
+function runAction(payload: Record<string, any>, shop = "test.myshopify.com") {
+  webhookMock.mockResolvedValue({ shop, payload, topic: "customers/update" });
+  return import("../routes/webhooks.customers.update.js").then(({ action }) =>
+    action({
+      request: new Request("https://example.com/webhooks/customers/update", { method: "POST" }),
+    } as any),
+  );
+}
+
+describe("webhooks.customers.update", () => {
   beforeEach(() => {
     vi.resetModules();
     upsertSpy.mockClear();
@@ -49,15 +61,22 @@ describe("webhooks.customers.create", () => {
       defaultAddressName: null,
     });
 
-    const { action } = await import("../routes/webhooks.customers.create.js");
+    const res = await runAction({
+      id: 1234567890,
+      first_name: "moha",
+      phone: "+972 59-226-3505",
+      tags: "",
+      default_address: null,
+    });
 
-    const res = await action({ request: new Request("https://example.com/webhooks/customers/create", { method: "POST" }) } as any);
     expect(res.status).toBe(200);
-
     expect(fetchCustomerSpy).toHaveBeenCalledWith("test.myshopify.com", 1234567890);
+
+    // Zoho sync runs fire-and-forget; flush microtasks so the .then() logging fires.
+    await new Promise((r) => setTimeout(r, 0));
+
     expect(upsertSpy).toHaveBeenCalledTimes(1);
     const arg = upsertSpy.mock.calls[0][0];
-
     expect(arg.email).toBe("mohazaqout@gmail.com");
     expect(arg.first_name).toBe("moha");
     expect(arg.last_name).toBe("zaqout");
@@ -67,15 +86,20 @@ describe("webhooks.customers.create", () => {
   it("falls back to the redacted webhook payload fields when the Admin GraphQL fetch fails", async () => {
     fetchCustomerSpy.mockRejectedValue(new Error("boom"));
 
-    const { action } = await import("../routes/webhooks.customers.create.js");
+    const res = await runAction({
+      id: 1234567890,
+      first_name: "moha",
+      phone: "+972 59-226-3505",
+      tags: "",
+      default_address: null,
+    });
 
-    const res = await action({ request: new Request("https://example.com/webhooks/customers/create", { method: "POST" }) } as any);
     expect(res.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 0));
 
     expect(upsertSpy).toHaveBeenCalledTimes(1);
     const arg = upsertSpy.mock.calls[0][0];
-
-    // No email/last_name in the redacted payload — the fallback path never had them.
     expect(arg.email).toBeUndefined();
     expect(arg.last_name).toBeUndefined();
     expect(arg.first_name).toBe("moha");

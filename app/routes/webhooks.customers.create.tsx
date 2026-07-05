@@ -5,6 +5,7 @@ import {
   resolveCustomerName,
   type ZohoAddress,
 } from "../services/zoho.server";
+import { fetchCustomerFromAdmin } from "../lib/fetch-customer.server";
 
 /**
  * CUSTOMERS_CREATE webhook
@@ -34,33 +35,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       `email=${JSON.stringify(c.email)}`,
   );
 
+  // --- Fetch the full customer record via Admin GraphQL ---
+  // The webhook payload is GDPR-redacted (only id, first_name, phone — no
+  // email, no last_name), so we use the payload solely as a trigger and
+  // pull the authoritative fields from the Admin API using the existing
+  // offline session/admin client.
+  let firstName = c.first_name;
+  let lastName = c.last_name;
+  let email = c.email;
+  let phone = c.phone;
+  let addressName: string | undefined;
+
+  try {
+    const customer = await fetchCustomerFromAdmin(shop, c.id);
+    firstName = customer.firstName ?? undefined;
+    lastName = customer.lastName ?? undefined;
+    email = customer.email ?? undefined;
+    phone = customer.phone ?? undefined;
+    addressName = customer.defaultAddressName ?? undefined;
+    console.log(
+      `[${topic}] Admin GraphQL fetch ✓ customer ${c.id}: ` +
+        `firstName=${firstName ?? "—"} lastName=${lastName ?? "—"} ` +
+        `email=${email ?? "—"} phone=${phone ?? "—"}`,
+    );
+  } catch (err: any) {
+    console.warn(
+      `[${topic}] Admin GraphQL fetch failed for customer ${c.id} — ` +
+        `falling back to webhook payload fields: ${err?.message ?? err}`,
+    );
+  }
+
   // --- Resolve customer_name using the full fallback chain ---
   const { name: customerName, resolvedBy } = resolveCustomerName({
-    firstName: c.first_name,
-    lastName: c.last_name,
-    email: c.email,
-    phone: c.phone,
+    firstName,
+    lastName,
+    email,
+    phone,
     shopifyCustomerId: c.id,
   });
 
   console.log(
     `[${topic}] shop=${shop} customer id=${c.id} ` +
       `name="${customerName}" (resolved by: ${resolvedBy}) ` +
-      `email=${c.email ?? "—"} phone=${c.phone ?? "—"}`,
+      `email=${email ?? "—"} phone=${phone ?? "—"}`,
   );
 
   // --- Map Shopify address → Zoho billing address ---
+  // Only the address `name` field is available from the Admin GraphQL query;
+  // fall back to the webhook payload's default_address when GraphQL failed.
   const addr = c.default_address;
-  const billingAddress: ZohoAddress | undefined = addr
+  const billingAddress: ZohoAddress | undefined = addressName || addr
     ? {
-        attention: customerName,
-        address: addr.address1 ?? undefined,
-        street2: addr.address2 ?? undefined,
-        city: addr.city ?? undefined,
-        state: addr.province ?? undefined,
-        zip: addr.zip ?? undefined,
-        country: addr.country ?? undefined,
-        phone: addr.phone ?? c.phone ?? undefined,
+        attention: addressName ?? customerName,
+        address: addr?.address1 ?? undefined,
+        street2: addr?.address2 ?? undefined,
+        city: addr?.city ?? undefined,
+        state: addr?.province ?? undefined,
+        zip: addr?.zip ?? undefined,
+        country: addr?.country ?? undefined,
+        phone: addr?.phone ?? phone ?? undefined,
       }
     : undefined;
 
@@ -74,11 +107,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const result = await upsertZohoCustomer({
       customer_name: customerName,
       // Pass name parts so buildCreateBody can populate contact_persons correctly
-      ...(c.first_name ? { first_name: c.first_name } : {}),
-      ...(c.last_name ? { last_name: c.last_name } : {}),
+      ...(firstName ? { first_name: firstName } : {}),
+      ...(lastName ? { last_name: lastName } : {}),
       // Only set email/phone when they exist — never send empty strings
-      ...(c.email ? { email: c.email } : {}),
-      ...(c.phone ? { phone: c.phone } : {}),
+      ...(email ? { email } : {}),
+      ...(phone ? { phone } : {}),
       billing_address: billingAddress,
       shipping_address: billingAddress,
       shopify_customer_id: String(c.id),

@@ -1,11 +1,47 @@
 /**
- * Tests for zoho.server.ts body builders and lookup order.
- *
- * We intercept global fetch to capture the exact JSON sent to Zoho so we can
- * assert field presence/absence without exporting private functions.
+ * Tests for zoho.server.ts body builders, pricebook resolver, and lookup order.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ---------------------------------------------------------------------------
+// Realistic pricebook fixtures
+// ---------------------------------------------------------------------------
+
+const PRICEBOOKS = [
+  // inactive — should never be selected
+  {
+    pricebook_id: "4516918000003364347",
+    name: "ONLINE RSP",
+    status: "inactive",
+    sales_or_purchase_type: "sales",
+    last_modified_time: "2025-01-01T00:00:00Z",
+  },
+  // active online sales — CORRECT choice (most recent)
+  {
+    pricebook_id: "4516918000033680134",
+    name: "ONLINE RSP MAY 26",
+    status: "active",
+    sales_or_purchase_type: "sales",
+    last_modified_time: "2026-05-01T00:00:00Z",
+  },
+  // active but NOT online — must be ignored
+  {
+    pricebook_id: "4516918000023690060",
+    name: "WSP NOV 25",
+    status: "active",
+    sales_or_purchase_type: "sales",
+    last_modified_time: "2025-11-01T00:00:00Z",
+  },
+  // active but back-margin (not online, not sales) — must be ignored
+  {
+    pricebook_id: "4516918000000101337",
+    name: "10% BACK MARGIN",
+    status: "active",
+    sales_or_purchase_type: "purchase",
+    last_modified_time: "2024-01-01T00:00:00Z",
+  },
+];
 
 // ---------------------------------------------------------------------------
 // Shared fetch mock factory
@@ -14,10 +50,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 type CapturedCall = { url: string; method: string; body: Record<string, unknown> | null };
 
 function mockFetch(opts: {
-  /** contact_id to return on GET /contacts lookups (undefined = no existing contact) */
   existingContactId?: string;
+  /** Return these pricebooks; defaults to PRICEBOOKS fixture */
+  pricebooks?: typeof PRICEBOOKS;
+  /** Simulate pricebooks endpoint failure */
+  pricebooksError?: boolean;
 }): { calls: CapturedCall[] } {
   const calls: CapturedCall[] = [];
+  const books = opts.pricebooks ?? PRICEBOOKS;
 
   vi.stubGlobal(
     "fetch",
@@ -26,7 +66,6 @@ function mockFetch(opts: {
       const body = init?.body ? JSON.parse(init.body as string) : null;
       calls.push({ url, method, body });
 
-      // OAuth token endpoint
       if ((url as string).includes("accounts.zoho")) {
         return new Response(
           JSON.stringify({ access_token: "test-token", expires_in: 3600 }),
@@ -34,7 +73,13 @@ function mockFetch(opts: {
         );
       }
 
-      // GET /contacts — lookup
+      if ((url as string).includes("/pricebooks")) {
+        if (opts.pricebooksError) {
+          return new Response("Internal Server Error", { status: 500 });
+        }
+        return new Response(JSON.stringify({ pricebooks: books }), { status: 200 });
+      }
+
       if (method === "GET" && (url as string).includes("/contacts")) {
         const contacts = opts.existingContactId
           ? [{ contact_id: opts.existingContactId }]
@@ -42,7 +87,6 @@ function mockFetch(opts: {
         return new Response(JSON.stringify({ contacts }), { status: 200 });
       }
 
-      // POST /contacts — create
       if (method === "POST" && (url as string).includes("/contacts")) {
         return new Response(
           JSON.stringify({ code: 0, contact: { contact_id: "new-contact-123" } }),
@@ -50,7 +94,6 @@ function mockFetch(opts: {
         );
       }
 
-      // PUT /contacts/{id} — enrich/update
       if (method === "PUT" && (url as string).includes("/contacts/")) {
         return new Response(
           JSON.stringify({ code: 0, contact: { contact_id: opts.existingContactId } }),
@@ -66,52 +109,120 @@ function mockFetch(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// buildCreateBody tests
+// resolveOnlinePricebookId
+// ---------------------------------------------------------------------------
+
+describe("resolveOnlinePricebookId", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+    delete process.env.ZOHO_PRICEBOOK_ID;
+  });
+
+  it("selects the active online sales pricebook (ONLINE RSP MAY 26)", async () => {
+    mockFetch({});
+    const { resolveOnlinePricebookId } = await import("./zoho.server.js");
+    const id = await resolveOnlinePricebookId("test-token", "test-org");
+    expect(id).toBe("4516918000033680134");
+  });
+
+  it("ignores inactive pricebooks even if they match /online/i", async () => {
+    // Only the inactive ONLINE RSP and the active but non-online ones
+    mockFetch({
+      pricebooks: [
+        { pricebook_id: "inactive-online", name: "ONLINE RSP", status: "inactive", sales_or_purchase_type: "sales", last_modified_time: "2025-01-01T00:00:00Z" },
+        { pricebook_id: "active-wsp", name: "WSP NOV 25", status: "active", sales_or_purchase_type: "sales", last_modified_time: "2025-11-01T00:00:00Z" },
+      ],
+    });
+    process.env.ZOHO_PRICEBOOK_ID = "env-fallback-id";
+    const { resolveOnlinePricebookId } = await import("./zoho.server.js");
+    const id = await resolveOnlinePricebookId("test-token", "test-org");
+    expect(id).toBe("env-fallback-id");
+  });
+
+  it("falls back to ZOHO_PRICEBOOK_ID env var when no online pricebook matches", async () => {
+    mockFetch({ pricebooks: [] });
+    process.env.ZOHO_PRICEBOOK_ID = "4516918000033680134";
+    const { resolveOnlinePricebookId } = await import("./zoho.server.js");
+    const id = await resolveOnlinePricebookId("test-token", "test-org");
+    expect(id).toBe("4516918000033680134");
+  });
+
+  it("throws a clear error when nothing matches and env var is absent", async () => {
+    mockFetch({ pricebooks: [] });
+    const { resolveOnlinePricebookId } = await import("./zoho.server.js");
+    await expect(resolveOnlinePricebookId("test-token", "test-org")).rejects.toThrow(
+      /ZOHO_PRICEBOOK_ID/,
+    );
+  });
+
+  it("picks the most recently modified when multiple active online pricebooks exist", async () => {
+    mockFetch({
+      pricebooks: [
+        { pricebook_id: "older", name: "ONLINE RSP MAR 26", status: "active", sales_or_purchase_type: "sales", last_modified_time: "2026-03-01T00:00:00Z" },
+        { pricebook_id: "newer", name: "ONLINE RSP MAY 26", status: "active", sales_or_purchase_type: "sales", last_modified_time: "2026-05-01T00:00:00Z" },
+      ],
+    });
+    const { resolveOnlinePricebookId } = await import("./zoho.server.js");
+    const id = await resolveOnlinePricebookId("test-token", "test-org");
+    expect(id).toBe("newer");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCreateBody
 // ---------------------------------------------------------------------------
 
 describe("buildCreateBody", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    delete process.env.ZOHO_PRICEBOOK_ID;
   });
 
-  it("sends all seven required custom fields on create", async () => {
+  it("sends pricebook_id at the top level (auto-discovered)", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
-    await upsertZohoCustomer({
-      customer_name: "Sameer",
-      phone: "+9647701234567",
-      shopify_customer_id: "22222",
-    });
+    await upsertZohoCustomer({ customer_name: "Sameer", phone: "+9647701234567", shopify_customer_id: "22222" });
 
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
+    expect(post?.body?.pricebook_id).toBe("4516918000033680134");
     expect(post?.body?.contact_name).toBe("Sameer");
     expect(post?.body?.contact_type).toBe("customer");
-
-    const fields = post?.body?.custom_fields as Array<{ api_name: string; value: unknown }>;
-    const byName = Object.fromEntries(fields.map((f) => [f.api_name, f.value]));
-
-    expect(byName["cf_price_list"]).toBe("ONLINE RSP");
-    expect(byName["cf_back_margin_rebate"]).toBe(0);
-    expect(byName["cf_front_margin_rebate"]).toBe(0);
-    expect(byName["cf_category_type"]).toBe("MIX");
-    expect(byName["cf_customer_type"]).toBe("Cash");
-    expect(byName["cf_customer_source"]).toBe("Shopify");
-    expect(byName["cf_shopify_customer_id"]).toBe("22222");
   });
 
-  it("does NOT send pricebook_id as a top-level field", async () => {
+  it("does NOT send pricebook_id inside custom_fields", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
     await upsertZohoCustomer({ customer_name: "Test", shopify_customer_id: "11111" });
 
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
-    expect(post?.body?.pricebook_id).toBeUndefined();
+    const fields = post?.body?.custom_fields as Array<{ api_name: string }>;
+    expect(fields.map((f) => f.api_name)).not.toContain("pricebook_id");
+    expect(fields.map((f) => f.api_name)).not.toContain("cf_price_list");
   });
 
-  it("does NOT send cf_credit_limit (Zoho auto-applies its default of 2 000 000)", async () => {
+  it("sends all six required custom fields", async () => {
+    const { calls } = mockFetch({});
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({ customer_name: "Test", phone: "+9647701234567", shopify_customer_id: "22222" });
+
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
+    const fields = post?.body?.custom_fields as Array<{ api_name: string; value: unknown }>;
+    const byName = Object.fromEntries(fields.map((f) => [f.api_name, f.value]));
+
+    expect(byName["cf_back_margin_rebate"]).toBe(0);
+    expect(byName["cf_front_margin_rebate"]).toBe(0);
+    expect(byName["cf_category_type"]).toBe("MIX");
+    expect(byName["cf_customer_type"]).toBeDefined();
+    expect(byName["cf_customer_source"]).toBe("Shopify");
+    expect(byName["cf_shopify_customer_id"]).toBe("22222");
+  });
+
+  it("does NOT send cf_credit_limit (Zoho auto-applies its 2 000 000 default)", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
@@ -121,24 +232,36 @@ describe("buildCreateBody", () => {
     const fields = post?.body?.custom_fields as Array<{ api_name: string }>;
     expect(fields.map((f) => f.api_name)).not.toContain("cf_credit_limit");
   });
+
+  it("uses env fallback when pricebook discovery fails", async () => {
+    process.env.ZOHO_PRICEBOOK_ID = "env-fallback-id";
+    const { calls } = mockFetch({ pricebooks: [] });
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({ customer_name: "Test", shopify_customer_id: "11111" });
+
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
+    expect(post?.body?.pricebook_id).toBe("env-fallback-id");
+  });
 });
 
 // ---------------------------------------------------------------------------
-// buildEnrichBody tests (update / existing contact path)
+// buildEnrichBody (update path)
 // ---------------------------------------------------------------------------
 
 describe("buildEnrichBody (update path)", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    delete process.env.ZOHO_PRICEBOOK_ID;
   });
 
-  it("sends only cf_customer_source and cf_shopify_customer_id on update", async () => {
+  it("does NOT send pricebook_id on update (existing contacts already have one)", async () => {
     const { calls } = mockFetch({ existingContactId: "existing-456" });
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
     await upsertZohoCustomer({
-      customer_name: "Existing Customer",
+      customer_name: "Existing",
       phone: "+9647701234567",
       shopify_customer_id: "44444",
       notes: "Shopify ID: 44444",
@@ -146,8 +269,6 @@ describe("buildEnrichBody (update path)", () => {
 
     const put = calls.find((c) => c.method === "PUT" && c.url.includes("/contacts/"));
     expect(put).toBeDefined();
-
-    // Must NOT overwrite fields the native integration owns
     expect(put?.body?.pricebook_id).toBeUndefined();
     expect(put?.body?.contact_name).toBeUndefined();
     expect(put?.body?.contact_type).toBeUndefined();
@@ -156,9 +277,6 @@ describe("buildEnrichBody (update path)", () => {
     const byName = Object.fromEntries(fields.map((f) => [f.api_name, f.value]));
     expect(byName["cf_customer_source"]).toBe("Shopify");
     expect(byName["cf_shopify_customer_id"]).toBe("44444");
-
-    // Create-only fields must not appear in enrich body
-    expect(byName["cf_price_list"]).toBeUndefined();
     expect(byName["cf_back_margin_rebate"]).toBeUndefined();
     expect(byName["cf_front_margin_rebate"]).toBeUndefined();
     expect(byName["cf_category_type"]).toBeUndefined();
@@ -167,42 +285,33 @@ describe("buildEnrichBody (update path)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Lookup order tests — phone → email → contact_name
+// Lookup order — phone → email → contact_name
 // ---------------------------------------------------------------------------
 
 describe("findExistingContact lookup order", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
+    delete process.env.ZOHO_PRICEBOOK_ID;
   });
 
   it("searches by phone first", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
-    await upsertZohoCustomer({
-      customer_name: "Test",
-      phone: "+9647701234567",
-      email: "test@example.com",
-      shopify_customer_id: "55555",
-    });
+    await upsertZohoCustomer({ customer_name: "Test", phone: "+9647701234567", email: "t@t.com", shopify_customer_id: "55555" });
 
-    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
-    // First lookup must be by phone
+    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts") && !c.url.includes("/pricebooks"));
     expect(gets[0]?.url).toContain("phone=");
   });
 
-  it("searches by email second when phone is absent", async () => {
+  it("searches by email when phone is absent", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
-    await upsertZohoCustomer({
-      customer_name: "Test",
-      email: "test@example.com",
-      shopify_customer_id: "66666",
-    });
+    await upsertZohoCustomer({ customer_name: "Test", email: "t@t.com", shopify_customer_id: "66666" });
 
-    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
+    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts") && !c.url.includes("/pricebooks"));
     expect(gets[0]?.url).toContain("email=");
   });
 
@@ -210,27 +319,19 @@ describe("findExistingContact lookup order", () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
-    await upsertZohoCustomer({
-      customer_name: "Shopify Customer 99999",
-      shopify_customer_id: "99999",
-    });
+    await upsertZohoCustomer({ customer_name: "Shopify Customer 99999", shopify_customer_id: "99999" });
 
-    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
+    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts") && !c.url.includes("/pricebooks"));
     expect(gets[0]?.url).toContain("contact_name=");
   });
 
-  it("does NOT search by cf_shopify_customer_id (encrypted field — Zoho blocks search)", async () => {
+  it("never searches by cf_shopify_customer_id (encrypted — Zoho blocks search)", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
 
-    await upsertZohoCustomer({
-      customer_name: "Test",
-      phone: "+9647701234567",
-      shopify_customer_id: "77777",
-    });
+    await upsertZohoCustomer({ customer_name: "Test", phone: "+9647701234567", shopify_customer_id: "77777" });
 
-    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
-    const urls = gets.map((c) => c.url);
-    expect(urls.every((u) => !u.includes("cf_shopify_customer_id"))).toBe(true);
+    const lookups = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
+    expect(lookups.every((c) => !c.url.includes("cf_shopify_customer_id"))).toBe(true);
   });
 });

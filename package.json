@@ -15,6 +15,7 @@
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "list-pricebooks": "tsx --env-file=.env scripts/list-zoho-pricebooks.ts",
+    "inspect-zoho-contact": "tsx --env-file=.env scripts/inspect-zoho-contact.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma": "prisma",

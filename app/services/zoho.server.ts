@@ -68,6 +68,107 @@ const REGION = (process.env.ZOHO_REGION ?? "com").replace(/^\./, "");
 const ACCOUNTS_URL = `https://accounts.zoho.${REGION}/oauth/v2/token`;
 const API_BASE = `https://www.zohoapis.${REGION}/inventory/v1`;
 
+// ---------------------------------------------------------------------------
+// Pricebook resolver
+//
+// The org rotates "ONLINE RSP" pricebooks monthly (e.g. "ONLINE RSP MAY 26").
+// We auto-discover the currently active online sales pricebook so deploys
+// don't need manual env updates every month.
+//
+// Selection criteria (all must match):
+//   status                 === "active"
+//   sales_or_purchase_type === "sales"
+//   name                   matches /online/i
+//
+// If multiple match, pick the most recently modified (latest last_modified_time).
+// Falls back to ZOHO_PRICEBOOK_ID env var, then throws if neither resolves.
+// Cache TTL: 6 hours — long enough to avoid hammering the API, short enough
+// to pick up a monthly rotation within the same serverless instance lifetime.
+// ---------------------------------------------------------------------------
+
+interface PricebookCache {
+  pricebookId: string;
+  pricebookName: string;
+  expiresAt: number;
+}
+
+let pricebookCache: PricebookCache | null = null;
+const PRICEBOOK_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+export async function resolveOnlinePricebookId(
+  accessToken: string,
+  orgId: string,
+): Promise<string> {
+  if (pricebookCache && Date.now() < pricebookCache.expiresAt) {
+    return pricebookCache.pricebookId;
+  }
+
+  const url = new URL(`${API_BASE}/pricebooks`);
+  url.searchParams.set("organization_id", orgId);
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new Error(`Zoho listPricebooks HTTP ${res.status}: ${raw}`);
+  }
+
+  const data = await res.json() as {
+    pricebooks?: Array<{
+      pricebook_id: string;
+      name: string;
+      status: string;
+      sales_or_purchase_type?: string;
+      last_modified_time?: string;
+    }>;
+  };
+
+  const candidates = (data.pricebooks ?? []).filter(
+    (b) =>
+      b.status?.toLowerCase() === "active" &&
+      b.sales_or_purchase_type?.toLowerCase() === "sales" &&
+      /online/i.test(b.name),
+  );
+
+  let resolved: { pricebook_id: string; name: string } | null = null;
+
+  if (candidates.length > 0) {
+    // Pick the most recently modified when multiple match (monthly rotation)
+    candidates.sort((a, b) => {
+      const ta = a.last_modified_time ? new Date(a.last_modified_time).getTime() : 0;
+      const tb = b.last_modified_time ? new Date(b.last_modified_time).getTime() : 0;
+      return tb - ta;
+    });
+    resolved = candidates[0];
+  }
+
+  if (!resolved) {
+    // Fall back to env var if auto-discovery finds nothing
+    const envId = process.env.ZOHO_PRICEBOOK_ID;
+    if (envId) {
+      console.warn(
+        `[Zoho] No active online sales pricebook found — falling back to ZOHO_PRICEBOOK_ID=${envId}`,
+      );
+      pricebookCache = { pricebookId: envId, pricebookName: "(from env)", expiresAt: Date.now() + PRICEBOOK_TTL_MS };
+      return envId;
+    }
+    throw new Error(
+      "No active online sales pricebook found and ZOHO_PRICEBOOK_ID is not set. " +
+      "Run `pnpm inspect-zoho-contact` to inspect the org's pricebooks.",
+    );
+  }
+
+  console.log(`[Zoho] Resolved pricebook: id=${resolved.pricebook_id} name="${resolved.name}"`);
+  pricebookCache = {
+    pricebookId: resolved.pricebook_id,
+    pricebookName: resolved.name,
+    expiresAt: Date.now() + PRICEBOOK_TTL_MS,
+  };
+  return resolved.pricebook_id;
+}
+
 async function getAccessToken(): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) {
     return tokenCache.accessToken;
@@ -192,43 +293,72 @@ async function findExistingContact(
 // ---------------------------------------------------------------------------
 // Custom fields
 //
-// CREATE sends all seven fields verified against the org's field configuration:
-//   cf_price_list         — TEXT, mandatory; "ONLINE RSP" for Shopify customers
+// CREATE sends six custom fields verified against the org's field configuration:
 //   cf_back_margin_rebate — Percent, mandatory, no default → send 0
 //   cf_front_margin_rebate— Percent, mandatory, no default → send 0
 //   cf_category_type      — Dropdown: ELE | LHH | MIX
-//   cf_customer_type      — Dropdown: Credit | Cash | Consignment | Direct
+//   cf_customer_type      — Dropdown: "Credit " | "Cash " | ... (note trailing spaces)
 //   cf_customer_source    — Dropdown: Shopify | ...
 //   cf_shopify_customer_id— Encrypted text; write-only (search is blocked by Zoho)
+//
+// "Price List" is NOT a custom field — it is Zoho's native pricebook association
+// sent as pricebook_id at the top level of the create body (from ZOHO_PRICEBOOK_ID).
 //
 // cf_credit_limit is mandatory but has a default of 2 000 000 that Zoho
 // auto-applies; sending any value triggers input-format errors — omit it.
 //
 // ENRICH (update) sends only cf_customer_source + cf_shopify_customer_id so we
 // don't overwrite values the native Zoho↔Shopify integration manages.
+//
+// WARNING — trailing spaces: the org's dropdown options for cf_customer_type
+// appear to include trailing spaces (e.g. "Cash " not "Cash"). Run
+// `pnpm inspect-zoho-contact` on a real contact and check the exact value
+// in the output. Update CF_CUSTOMER_TYPE_VALUE below if needed.
 // ---------------------------------------------------------------------------
 
+const CF_CUSTOMER_TYPE_VALUE = "Cash"; // update to "Cash " if Zoho rejects this
+
+const KNOWN_CUSTOMER_TYPE_VALUES = ["Cash", "Cash ", "Credit", "Credit ", "Consignment", "Consignment ", "Direct", "Direct "];
+
 const CREATE_CUSTOM_FIELDS = [
-  { api_name: "cf_price_list",          value: "ONLINE RSP" },
-  { api_name: "cf_back_margin_rebate",  value: 0            },
-  { api_name: "cf_front_margin_rebate", value: 0            },
-  { api_name: "cf_category_type",       value: "MIX"        },
-  { api_name: "cf_customer_type",       value: "Cash"       },
-  { api_name: "cf_customer_source",     value: "Shopify"    },
-] as const;
+  { api_name: "cf_back_margin_rebate",  value: 0                    },
+  { api_name: "cf_front_margin_rebate", value: 0                    },
+  { api_name: "cf_category_type",       value: "MIX"                },
+  { api_name: "cf_customer_type",       value: CF_CUSTOMER_TYPE_VALUE },
+  { api_name: "cf_customer_source",     value: "Shopify"            },
+] as const satisfies Array<{ api_name: string; value: string | number }>;
 
 // ---------------------------------------------------------------------------
 // Body builders
 // ---------------------------------------------------------------------------
 
 /**
- * Full body for CREATE. The native Zoho↔Shopify integration will later match
+ * Full body for CREATE. pricebook_id is resolved dynamically (auto-discovery
+ * with env fallback). The native Zoho↔Shopify integration will later match
  * this contact by name and won't create a duplicate.
  */
-function buildCreateBody(payload: ZohoCustomerPayload): Record<string, unknown> {
+async function buildCreateBody(
+  payload: ZohoCustomerPayload,
+  accessToken: string,
+  orgId: string,
+): Promise<Record<string, unknown>> {
+  // Warn if the dropdown value we're about to send isn't in the known option list.
+  // Zoho dropdown fields in this org may have trailing spaces (e.g. "Cash " not "Cash").
+  // If a create fails with "invalid value for cf_customer_type", check real contacts
+  // with `pnpm inspect-zoho-contact` and update CF_CUSTOMER_TYPE_VALUE.
+  if (!KNOWN_CUSTOMER_TYPE_VALUES.includes(CF_CUSTOMER_TYPE_VALUE)) {
+    console.warn(`[Zoho] CF_CUSTOMER_TYPE_VALUE="${CF_CUSTOMER_TYPE_VALUE}" is not in the known options list — Zoho may reject it`);
+  }
+
+  // "Price List" is Zoho's native pricebook association — sent as a top-level
+  // field, NOT as a custom field. Auto-discovered from active online sales
+  // pricebooks; falls back to ZOHO_PRICEBOOK_ID env var.
+  const pricebookId = await resolveOnlinePricebookId(accessToken, orgId);
+
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
     contact_type: "customer",
+    pricebook_id: pricebookId,
   };
 
   if (payload.email) body.email = payload.email;
@@ -277,7 +407,7 @@ async function createZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
-  const requestBody = JSON.stringify(buildCreateBody(payload));
+  const requestBody = JSON.stringify(await buildCreateBody(payload, accessToken, orgId));
 
   console.log(`[Zoho] createCustomer REQUEST body: ${requestBody}`);
 

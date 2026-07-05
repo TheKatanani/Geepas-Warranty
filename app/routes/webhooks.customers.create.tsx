@@ -63,6 +63,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const result = await upsertZohoCustomer({
       customer_name: customerName,
+      first_name: c.first_name ?? undefined,
+      last_name: c.last_name ?? undefined,
       // Only set email/phone when they exist — never send empty strings
       ...(c.email ? { email: c.email } : {}),
       ...(c.phone ? { phone: c.phone } : {}),

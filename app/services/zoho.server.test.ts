@@ -192,6 +192,29 @@ describe("buildCreateBody", () => {
     expect(post?.body?.contact_type).toBe("customer");
   });
 
+  it("includes contact_persons with is_primary_contact and carries first/last/email/phone", async () => {
+    const { calls } = mockFetch({});
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({
+      customer_name: "moha zaqout",
+      first_name: "moha",
+      last_name: "zaqout",
+      email: "mohazaqout@gmail.com",
+      phone: "+972 59-226-3505",
+      shopify_customer_id: "12345",
+    });
+
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
+    const persons = post?.body?.contact_persons as Array<any> | undefined;
+    expect(Array.isArray(persons)).toBe(true);
+    expect(persons?.[0]?.is_primary_contact).toBe(true);
+    expect(persons?.[0]?.first_name).toBe("moha");
+    expect(persons?.[0]?.last_name).toBe("zaqout");
+    expect(persons?.[0]?.email).toBe("mohazaqout@gmail.com");
+    expect(persons?.[0]?.phone).toBe("+972 59-226-3505");
+  });
+
   it("does NOT send pricebook_id inside custom_fields", async () => {
     const { calls } = mockFetch({});
     const { upsertZohoCustomer } = await import("./zoho.server.js");
@@ -242,6 +265,31 @@ describe("buildCreateBody", () => {
 
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
     expect(post?.body?.pricebook_id).toBe("env-fallback-id");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveCustomerName
+// ---------------------------------------------------------------------------
+
+describe("resolveCustomerName", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+  });
+
+  it("builds displayName from first and last name when both present", async () => {
+    const { resolveCustomerName } = await import("./zoho.server.js");
+    const r = resolveCustomerName({ firstName: "moha", lastName: "zaqout", email: "x@y.com", phone: null, shopifyCustomerId: 1 });
+    expect(r.name).toBe("moha zaqout");
+    expect(r.resolvedBy).toBe("name");
+  });
+
+  it("uses first name alone when last name is absent", async () => {
+    const { resolveCustomerName } = await import("./zoho.server.js");
+    const r = resolveCustomerName({ firstName: "moha", lastName: "", email: "x@y.com", phone: null, shopifyCustomerId: 1 });
+    expect(r.name).toBe("moha");
+    expect(r.resolvedBy).toBe("name");
   });
 });
 

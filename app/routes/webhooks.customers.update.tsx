@@ -46,6 +46,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   upsertZohoCustomer({
     customer_name: zohoName,
+    first_name: raw.first_name ?? undefined,
+    last_name: raw.last_name ?? undefined,
     ...(raw.email ? { email: raw.email } : {}),
     ...(raw.phone ? { phone: raw.phone } : {}),
     shopify_customer_id: String(raw.id),

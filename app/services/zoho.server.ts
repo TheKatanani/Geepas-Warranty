@@ -27,6 +27,9 @@ export interface ZohoAddress {
 export interface ZohoCustomerPayload {
   /** Always required — never empty. Use resolveCustomerName() before calling. */
   customer_name: string;
+  /** Separate name parts — used for contact_persons.is_primary_contact on create */
+  first_name?: string;
+  last_name?: string;
   /** Only include when a real value exists — never send "" or undefined */
   email?: string;
   phone?: string;
@@ -367,6 +370,18 @@ async function buildCreateBody(
   if (payload.currency_code) body.currency_code = payload.currency_code;
   if (payload.billing_address) body.billing_address = payload.billing_address;
   if (payload.shipping_address) body.shipping_address = payload.shipping_address;
+
+  // Ensure Zoho shows a primary contact with email/phone in the UI and enables
+  // native Zoho↔Shopify email-based matching. Keep top-level phone as well.
+  body.contact_persons = [
+    {
+      ...(payload.first_name ? { first_name: payload.first_name } : {}),
+      ...(payload.last_name ? { last_name: payload.last_name } : {}),
+      ...(payload.email ? { email: payload.email } : {}),
+      ...(payload.phone ? { phone: payload.phone } : {}),
+      is_primary_contact: true,
+    },
+  ];
 
   body.custom_fields = [
     ...CREATE_CUSTOM_FIELDS,

@@ -217,13 +217,15 @@ function buildContactBody(
   mode: "create" | "update",
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
+    // Zoho Inventory /contacts uses "contact_name" as the field key.
+    // We ALSO send "customer_name" as an alias because Zoho's own error
+    // message says "Customer Name", suggesting it may validate that key too.
     contact_name: payload.customer_name,
-    // "customer" is the Zoho contact_type for buyers — NOT "individual" or "business".
-    // Those are Zoho Books concepts and are rejected by Zoho Inventory /contacts.
-    // Sending an invalid contact_type causes Zoho to return the misleading
-    // code 4 "Invalid value for Customer Name" error on the whole record.
+    customer_name: payload.customer_name,
+    // contact_type must be "customer" for buyer contacts in Zoho Inventory.
+    // Values "individual" / "business" are Zoho Books concepts and cause
+    // Zoho Inventory to return code 4 "Invalid value for Customer Name".
     contact_type: "customer",
-    customer_sub_type: "individual",
   };
 
   // Only include email/phone when they have a real value — never send "" or "undefined"
@@ -260,6 +262,10 @@ async function createZohoCustomer(
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
   const body = buildContactBody(payload, "create");
+  const requestBody = JSON.stringify({ contact: body });
+
+  // Log exact request body so we can diagnose field-level rejections
+  console.log(`[Zoho] createCustomer REQUEST body: ${requestBody}`);
 
   const res = await fetch(`${API_BASE}/contacts?organization_id=${orgId}`, {
     method: "POST",
@@ -267,14 +273,13 @@ async function createZohoCustomer(
       Authorization: `Zoho-oauthtoken ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ contact: body }),
+    body: requestBody,
   });
 
   const raw = await res.text();
 
   if (!res.ok) {
-    // Log the full response so we can identify which field Zoho rejected
-    console.error(`[Zoho] createCustomer HTTP ${res.status} — full response: ${raw}`);
+    console.error(`[Zoho] createCustomer HTTP ${res.status} — request: ${requestBody} — response: ${raw}`);
     throw new Error(`Zoho createCustomer HTTP ${res.status}: ${raw}`);
   }
 

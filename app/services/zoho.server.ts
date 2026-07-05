@@ -132,7 +132,11 @@ export function resolveCustomerName(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Idempotency lookups (email → phone → cf_shopify_customer_id)
+// Idempotency lookups (shopify_id → email → phone)
+//
+// shopify_id is checked first: it's written by us and is the most specific
+// identifier. Checking email/phone after avoids false-positive matches on
+// contacts the native Zoho↔Shopify integration created without our tag.
 // ---------------------------------------------------------------------------
 
 async function fetchContactList(
@@ -160,20 +164,8 @@ async function findExistingContact(
   accessToken: string,
   orgId: string,
 ): Promise<{ contactId: string; matchedBy: "email" | "phone" | "shopify_id" } | null> {
-  // 1. Email — most reliable unique identifier
-  if (payload.email) {
-    const id = await fetchContactList({ email: payload.email }, accessToken, orgId);
-    if (id) return { contactId: id, matchedBy: "email" };
-  }
-
-  // 2. Phone — used when customer created via OTP flow (no email yet)
-  if (payload.phone) {
-    const id = await fetchContactList({ phone: payload.phone }, accessToken, orgId);
-    if (id) return { contactId: id, matchedBy: "phone" };
-  }
-
-  // 3. Shopify customer ID stored in custom field cf_shopify_customer_id
-  //    Zoho custom field search: use the cf_ prefix in the search param
+  // 1. Shopify customer ID — written by us, most specific; avoids false-positive
+  //    matches on contacts the native integration created without our custom field.
   if (payload.shopify_customer_id) {
     const id = await fetchContactList(
       { cf_shopify_customer_id: payload.shopify_customer_id },
@@ -183,42 +175,45 @@ async function findExistingContact(
     if (id) return { contactId: id, matchedBy: "shopify_id" };
   }
 
+  // 2. Email — reliable unique identifier; also catches contacts the native
+  //    integration already created before we tagged them.
+  if (payload.email) {
+    const id = await fetchContactList({ email: payload.email }, accessToken, orgId);
+    if (id) return { contactId: id, matchedBy: "email" };
+  }
+
+  // 3. Phone — fallback for OTP-flow customers who have no email yet.
+  if (payload.phone) {
+    const id = await fetchContactList({ phone: payload.phone }, accessToken, orgId);
+    if (id) return { contactId: id, matchedBy: "phone" };
+  }
+
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Mandatory custom field defaults for Shopify-sourced contacts (CREATE only)
-//
-// These five fields are required by this Zoho org's contact schema.
-// Defaults represent a safe baseline for online/Shopify customers.
-// Clients can override them later via the Zoho UI or a follow-up API call.
-//
-//   cf_category_type        — product mix category  (ELE | LHH | MIX)
-//   cf_customer_type        — payment terms         (Credit  | Cash | Consignment | Direct)
-//   cf_credit_limit         — credit ceiling in org currency
-//   cf_back_margin_rebate   — back-margin rebate %
-//   cf_front_margin_rebate  — front-margin rebate %
-// ---------------------------------------------------------------------------
-
+// Org-required custom fields sent only on CREATE (safe defaults for Shopify customers).
+//   cf_category_type — product mix category (ELE | LHH | MIX)
+//   cf_customer_type — payment terms (Credit | Cash | Consignment | Direct)
 const CREATE_MANDATORY_CUSTOM_FIELDS = [
   { api_name: "cf_category_type", value: "MIX"  },
   { api_name: "cf_customer_type", value: "Cash" },
 ] as const;
 
 // ---------------------------------------------------------------------------
-// Build the Zoho contact body — strips undefined/empty, sets custom fields
+// Body builders
 // ---------------------------------------------------------------------------
 
-function buildContactBody(
-  payload: ZohoCustomerPayload,
-  mode: "create" | "update",
-): Record<string, unknown> {
+/**
+ * Full body for CREATE: contact_name, contact_type, phone, notes, and all
+ * four custom fields. The native Zoho↔Shopify integration will later match
+ * this contact by name and won't create a duplicate.
+ */
+function buildCreateBody(payload: ZohoCustomerPayload): Record<string, unknown> {
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
     contact_type: "customer",
   };
 
-  // Only include email/phone when they have a real value — never send "" or "undefined"
   if (payload.email) body.email = payload.email;
   if (payload.phone) body.phone = payload.phone;
   if (payload.notes) body.notes = payload.notes;
@@ -226,18 +221,32 @@ function buildContactBody(
   if (payload.billing_address) body.billing_address = payload.billing_address;
   if (payload.shipping_address) body.shipping_address = payload.shipping_address;
 
-  // Build custom_fields array:
-  //   - Always: cf_customer_source + cf_shopify_customer_id (idempotency key)
-  //   - On CREATE only: mandatory org fields with safe defaults
-  const customFields: Array<{ api_name: string; value: string | number }> = [
+  body.custom_fields = [
     { api_name: "cf_customer_source",    value: "Shopify" },
     ...(payload.shopify_customer_id
       ? [{ api_name: "cf_shopify_customer_id", value: payload.shopify_customer_id }]
       : []),
-    ...(mode === "create" ? CREATE_MANDATORY_CUSTOM_FIELDS : []),
+    ...CREATE_MANDATORY_CUSTOM_FIELDS,
   ];
 
-  body.custom_fields = customFields;
+  return body;
+}
+
+/**
+ * Enrich-only body for UPDATE: only custom_fields and notes.
+ * The native integration owns contact_name/phone — we must not overwrite them.
+ */
+function buildEnrichBody(payload: ZohoCustomerPayload): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  if (payload.notes) body.notes = payload.notes;
+
+  body.custom_fields = [
+    { api_name: "cf_customer_source", value: "Shopify" },
+    ...(payload.shopify_customer_id
+      ? [{ api_name: "cf_shopify_customer_id", value: payload.shopify_customer_id }]
+      : []),
+  ];
 
   return body;
 }
@@ -251,9 +260,7 @@ async function createZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
-  const body = buildContactBody(payload, "create");
-  // Zoho Inventory /contacts expects the fields at the top level — no wrapper object.
-  const requestBody = JSON.stringify(body);
+  const requestBody = JSON.stringify(buildCreateBody(payload));
 
   console.log(`[Zoho] createCustomer REQUEST body: ${requestBody}`);
 
@@ -299,8 +306,8 @@ async function updateZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<string> {
-  const requestBody = JSON.stringify(buildContactBody(payload, "update"));
-  console.log(`[Zoho] updateCustomer ${contactId} REQUEST body: ${requestBody}`);
+  const requestBody = JSON.stringify(buildEnrichBody(payload));
+  console.log(`[Zoho] enrichContact ${contactId} REQUEST body: ${requestBody}`);
 
   const res = await fetch(`${API_BASE}/contacts/${contactId}?organization_id=${orgId}`, {
     method: "PUT",
@@ -348,7 +355,7 @@ export async function upsertZohoCustomer(
 
     if (existing) {
       const raw = await updateZohoCustomer(existing.contactId, payload, accessToken, orgId);
-      console.log(`[Zoho] Updated contact ${existing.contactId} (matched by ${existing.matchedBy})`);
+      console.log(`[Zoho] Enriched contact ${existing.contactId} (matched by ${existing.matchedBy})`);
       return {
         success: true,
         zohoContactId: existing.contactId,

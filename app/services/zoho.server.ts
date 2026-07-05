@@ -201,11 +201,8 @@ async function findExistingContact(
 // ---------------------------------------------------------------------------
 
 const CREATE_MANDATORY_CUSTOM_FIELDS = [
-  { api_name: "cf_category_type",       value: "MIX"  },
-  { api_name: "cf_customer_type",       value: "Cash" },
-  { api_name: "cf_credit_limit",        value: 0      },
-  { api_name: "cf_back_margin_rebate",  value: 0      },
-  { api_name: "cf_front_margin_rebate", value: 0      },
+  { api_name: "cf_category_type", value: "MIX"  },
+  { api_name: "cf_customer_type", value: "Cash" },
 ] as const;
 
 // ---------------------------------------------------------------------------

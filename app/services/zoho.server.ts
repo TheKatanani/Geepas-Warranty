@@ -36,8 +36,9 @@ export interface ZohoCustomerPayload {
   notes?: string;
   /**
    * Shopify customer ID (numeric string).
-   * Stored as Zoho custom field cf_shopify_customer_id so future lookups
-   * can match even when email/phone are absent.
+   * Written to cf_shopify_customer_id on create/enrich for traceability.
+   * Cannot be used for lookup — cf_shopify_customer_id is an ENCRYPTED PII
+   * field in this org; Zoho does not allow searching encrypted custom fields.
    */
   shopify_customer_id?: string;
 }
@@ -49,7 +50,7 @@ export interface ZohoCustomerResult {
   error?: string;
   alreadyExists?: boolean;
   /** Which field was used to detect the existing record */
-  matchedBy?: "email" | "phone" | "shopify_id" | "none";
+  matchedBy?: "phone" | "email" | "contact_name" | "none";
 }
 
 // ---------------------------------------------------------------------------
@@ -66,16 +67,6 @@ let tokenCache: TokenCache | null = null;
 const REGION = (process.env.ZOHO_REGION ?? "com").replace(/^\./, "");
 const ACCOUNTS_URL = `https://accounts.zoho.${REGION}/oauth/v2/token`;
 const API_BASE = `https://www.zohoapis.${REGION}/inventory/v1`;
-
-function requirePricebookId(): string {
-  const id = process.env.ZOHO_PRICEBOOK_ID;
-  if (!id) {
-    throw new Error(
-      "Missing ZOHO_PRICEBOOK_ID. Run `pnpm tsx scripts/list-zoho-pricebooks.ts` to find the correct ID, then set it in your env.",
-    );
-  }
-  return id;
-}
 
 async function getAccessToken(): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) {
@@ -142,11 +133,13 @@ export function resolveCustomerName(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// Idempotency lookups (shopify_id → email → phone)
+// Idempotency lookups — order: phone → email → contact_name
 //
-// shopify_id is checked first: it's written by us and is the most specific
-// identifier. Checking email/phone after avoids false-positive matches on
-// contacts the native Zoho↔Shopify integration created without our tag.
+// cf_shopify_customer_id is an ENCRYPTED PII field in this org; Zoho blocks
+// searching encrypted custom fields (returns empty results silently). We still
+// WRITE it on create/enrich so it's visible in the Zoho UI, but we cannot use
+// it as a search key. Search by phone first (most stable for OTP-flow
+// customers), then email, then contact_name as a last resort.
 // ---------------------------------------------------------------------------
 
 async function fetchContactList(
@@ -173,40 +166,55 @@ async function findExistingContact(
   payload: ZohoCustomerPayload,
   accessToken: string,
   orgId: string,
-): Promise<{ contactId: string; matchedBy: "email" | "phone" | "shopify_id" } | null> {
-  // 1. Shopify customer ID — written by us, most specific; avoids false-positive
-  //    matches on contacts the native integration created without our custom field.
-  if (payload.shopify_customer_id) {
-    const id = await fetchContactList(
-      { cf_shopify_customer_id: payload.shopify_customer_id },
-      accessToken,
-      orgId,
-    );
-    if (id) return { contactId: id, matchedBy: "shopify_id" };
-  }
-
-  // 2. Email — reliable unique identifier; also catches contacts the native
-  //    integration already created before we tagged them.
-  if (payload.email) {
-    const id = await fetchContactList({ email: payload.email }, accessToken, orgId);
-    if (id) return { contactId: id, matchedBy: "email" };
-  }
-
-  // 3. Phone — fallback for OTP-flow customers who have no email yet.
+): Promise<{ contactId: string; matchedBy: "phone" | "email" | "contact_name" } | null> {
+  // 1. Phone — most stable for OTP-flow customers who register before adding email.
   if (payload.phone) {
     const id = await fetchContactList({ phone: payload.phone }, accessToken, orgId);
     if (id) return { contactId: id, matchedBy: "phone" };
   }
 
+  // 2. Email — reliable unique identifier for customers who signed up with email.
+  if (payload.email) {
+    const id = await fetchContactList({ email: payload.email }, accessToken, orgId);
+    if (id) return { contactId: id, matchedBy: "email" };
+  }
+
+  // 3. contact_name — last resort; may match unrelated contacts if names collide.
+  //    Only used when neither phone nor email is available.
+  if (payload.customer_name) {
+    const id = await fetchContactList({ contact_name: payload.customer_name }, accessToken, orgId);
+    if (id) return { contactId: id, matchedBy: "contact_name" };
+  }
+
   return null;
 }
 
-// Org-required custom fields sent only on CREATE (safe defaults for Shopify customers).
-//   cf_category_type — product mix category (ELE | LHH | MIX)
-//   cf_customer_type — payment terms (Credit | Cash | Consignment | Direct)
-const CREATE_MANDATORY_CUSTOM_FIELDS = [
-  { api_name: "cf_category_type", value: "MIX"  },
-  { api_name: "cf_customer_type", value: "Cash" },
+// ---------------------------------------------------------------------------
+// Custom fields
+//
+// CREATE sends all seven fields verified against the org's field configuration:
+//   cf_price_list         — TEXT, mandatory; "ONLINE RSP" for Shopify customers
+//   cf_back_margin_rebate — Percent, mandatory, no default → send 0
+//   cf_front_margin_rebate— Percent, mandatory, no default → send 0
+//   cf_category_type      — Dropdown: ELE | LHH | MIX
+//   cf_customer_type      — Dropdown: Credit | Cash | Consignment | Direct
+//   cf_customer_source    — Dropdown: Shopify | ...
+//   cf_shopify_customer_id— Encrypted text; write-only (search is blocked by Zoho)
+//
+// cf_credit_limit is mandatory but has a default of 2 000 000 that Zoho
+// auto-applies; sending any value triggers input-format errors — omit it.
+//
+// ENRICH (update) sends only cf_customer_source + cf_shopify_customer_id so we
+// don't overwrite values the native Zoho↔Shopify integration manages.
+// ---------------------------------------------------------------------------
+
+const CREATE_CUSTOM_FIELDS = [
+  { api_name: "cf_price_list",          value: "ONLINE RSP" },
+  { api_name: "cf_back_margin_rebate",  value: 0            },
+  { api_name: "cf_front_margin_rebate", value: 0            },
+  { api_name: "cf_category_type",       value: "MIX"        },
+  { api_name: "cf_customer_type",       value: "Cash"       },
+  { api_name: "cf_customer_source",     value: "Shopify"    },
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -214,15 +222,13 @@ const CREATE_MANDATORY_CUSTOM_FIELDS = [
 // ---------------------------------------------------------------------------
 
 /**
- * Full body for CREATE: contact_name, contact_type, phone, notes, and all
- * four custom fields. The native Zoho↔Shopify integration will later match
+ * Full body for CREATE. The native Zoho↔Shopify integration will later match
  * this contact by name and won't create a duplicate.
  */
 function buildCreateBody(payload: ZohoCustomerPayload): Record<string, unknown> {
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
     contact_type: "customer",
-    pricebook_id: requirePricebookId(),
   };
 
   if (payload.email) body.email = payload.email;
@@ -233,19 +239,19 @@ function buildCreateBody(payload: ZohoCustomerPayload): Record<string, unknown> 
   if (payload.shipping_address) body.shipping_address = payload.shipping_address;
 
   body.custom_fields = [
-    { api_name: "cf_customer_source",    value: "Shopify" },
+    ...CREATE_CUSTOM_FIELDS,
     ...(payload.shopify_customer_id
       ? [{ api_name: "cf_shopify_customer_id", value: payload.shopify_customer_id }]
       : []),
-    ...CREATE_MANDATORY_CUSTOM_FIELDS,
   ];
 
   return body;
 }
 
 /**
- * Enrich-only body for UPDATE: only custom_fields and notes.
- * The native integration owns contact_name/phone — we must not overwrite them.
+ * Enrich-only body for UPDATE: only notes + the two traceability custom fields.
+ * The native integration owns contact_name/phone/price_list — we must not
+ * overwrite them.
  */
 function buildEnrichBody(payload: ZohoCustomerPayload): Record<string, unknown> {
   const body: Record<string, unknown> = {};
@@ -308,7 +314,7 @@ async function createZohoCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Update
+// Update (enrich)
 // ---------------------------------------------------------------------------
 
 async function updateZohoCustomer(
@@ -338,7 +344,7 @@ async function updateZohoCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Public: upsert (create or update, matching by email → phone → shopify_id)
+// Public: upsert (find existing → enrich, or create)
 // ---------------------------------------------------------------------------
 
 export async function upsertZohoCustomer(
@@ -392,14 +398,12 @@ export async function upsertZohoCustomer(
 }
 
 // ---------------------------------------------------------------------------
-// Dev helper: list all pricebooks in the org so you can find ZOHO_PRICEBOOK_ID
+// Dev helper: list all pricebooks in the org
 // ---------------------------------------------------------------------------
 
 export interface ZohoPricebook {
   pricebook_id: string;
   name: string;
-  // Zoho returns this as "is_default" (boolean) at the top level of each entry.
-  // Some API versions omit it; we treat absence as false.
   is_default?: boolean;
 }
 
@@ -419,10 +423,9 @@ export async function listPricebooks(): Promise<ZohoPricebook[]> {
   const raw = await res.text();
   if (!res.ok) throw new Error(`Zoho listPricebooks HTTP ${res.status}: ${raw}`);
 
-  // Zoho wraps the array under "pricebooks"; individual entries have pricebook_id + name.
   const data = JSON.parse(raw) as { pricebooks?: Array<Record<string, unknown>> };
   const books: ZohoPricebook[] = (data.pricebooks ?? []).map((b) => ({
-    pricebook_id: String(b.pricebook_id ?? b.pricebook_id),
+    pricebook_id: String(b.pricebook_id),
     name: String(b.name ?? ""),
     is_default: Boolean(b.is_default),
   }));

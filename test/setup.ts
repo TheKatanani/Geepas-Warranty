@@ -14,3 +14,9 @@ process.env.SCOPES ??= "read_customers,write_customers";
 process.env.SHOPIFY_APP_URL ??= "https://test.example.com";
 
 process.env.DATABASE_URL ??= "postgresql://test:test@localhost:5432/test";
+
+process.env.ZOHO_CLIENT_ID ??= "test-zoho-client-id";
+process.env.ZOHO_CLIENT_SECRET ??= "test-zoho-client-secret";
+process.env.ZOHO_REFRESH_TOKEN ??= "test-zoho-refresh-token";
+process.env.ZOHO_ORGANIZATION_ID ??= "test-zoho-org-id";
+process.env.ZOHO_PRICEBOOK_ID ??= "test-pricebook-id";

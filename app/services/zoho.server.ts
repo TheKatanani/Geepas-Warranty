@@ -67,6 +67,16 @@ const REGION = (process.env.ZOHO_REGION ?? "com").replace(/^\./, "");
 const ACCOUNTS_URL = `https://accounts.zoho.${REGION}/oauth/v2/token`;
 const API_BASE = `https://www.zohoapis.${REGION}/inventory/v1`;
 
+function requirePricebookId(): string {
+  const id = process.env.ZOHO_PRICEBOOK_ID;
+  if (!id) {
+    throw new Error(
+      "Missing ZOHO_PRICEBOOK_ID. Run `pnpm tsx scripts/list-zoho-pricebooks.ts` to find the correct ID, then set it in your env.",
+    );
+  }
+  return id;
+}
+
 async function getAccessToken(): Promise<string> {
   if (tokenCache && Date.now() < tokenCache.expiresAt - 60_000) {
     return tokenCache.accessToken;
@@ -212,6 +222,7 @@ function buildCreateBody(payload: ZohoCustomerPayload): Record<string, unknown> 
   const body: Record<string, unknown> = {
     contact_name: payload.customer_name,
     contact_type: "customer",
+    pricebook_id: requirePricebookId(),
   };
 
   if (payload.email) body.email = payload.email;
@@ -378,4 +389,49 @@ export async function upsertZohoCustomer(
     console.error("[Zoho] upsertZohoCustomer failed:", err.message);
     return { success: false, error: err.message };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dev helper: list all pricebooks in the org so you can find ZOHO_PRICEBOOK_ID
+// ---------------------------------------------------------------------------
+
+export interface ZohoPricebook {
+  pricebook_id: string;
+  name: string;
+  // Zoho returns this as "is_default" (boolean) at the top level of each entry.
+  // Some API versions omit it; we treat absence as false.
+  is_default?: boolean;
+}
+
+export async function listPricebooks(): Promise<ZohoPricebook[]> {
+  const orgId = process.env.ZOHO_ORGANIZATION_ID ?? "";
+  if (!orgId) throw new Error("ZOHO_ORGANIZATION_ID env var not set.");
+
+  const accessToken = await getAccessToken();
+
+  const url = new URL(`${API_BASE}/pricebooks`);
+  url.searchParams.set("organization_id", orgId);
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+  });
+
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`Zoho listPricebooks HTTP ${res.status}: ${raw}`);
+
+  // Zoho wraps the array under "pricebooks"; individual entries have pricebook_id + name.
+  const data = JSON.parse(raw) as { pricebooks?: Array<Record<string, unknown>> };
+  const books: ZohoPricebook[] = (data.pricebooks ?? []).map((b) => ({
+    pricebook_id: String(b.pricebook_id ?? b.pricebook_id),
+    name: String(b.name ?? ""),
+    is_default: Boolean(b.is_default),
+  }));
+
+  console.log(`[Zoho] ${books.length} pricebook(s) found:`);
+  for (const b of books) {
+    const tag = b.is_default ? "  ← default" : "";
+    console.log(`  pricebook_id=${b.pricebook_id}  name="${b.name}"${tag}`);
+  }
+
+  return books;
 }

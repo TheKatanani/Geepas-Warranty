@@ -14,6 +14,7 @@
     "setup": "prisma generate && prisma migrate deploy",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
+    "list-pricebooks": "tsx --env-file=.env scripts/list-zoho-pricebooks.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma": "prisma",
@@ -52,6 +53,7 @@
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
+    "tsx": "^4.23.0",
     "typescript": "^5.2.2",
     "vite": "^6.2.2",
     "vitest": "^3.2.6"

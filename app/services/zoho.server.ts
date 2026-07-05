@@ -140,8 +140,9 @@ async function fetchContactList(
   accessToken: string,
   orgId: string,
 ): Promise<string | null> {
-  const url = new URL(`${API_BASE}/customers`);
+  const url = new URL(`${API_BASE}/contacts`);
   url.searchParams.set("organization_id", orgId);
+  url.searchParams.set("contact_type", "customer");
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
 
   const res = await fetch(url.toString(), {
@@ -150,8 +151,8 @@ async function fetchContactList(
 
   if (!res.ok) return null;
 
-  const data = await res.json() as { customers?: Array<{ contact_id: string }> };
-  return data.customers?.[0]?.contact_id ?? null;
+  const data = await res.json() as { contacts?: Array<{ contact_id: string }> };
+  return data.contacts?.[0]?.contact_id ?? null;
 }
 
 async function findExistingContact(
@@ -215,10 +216,9 @@ function buildContactBody(
   payload: ZohoCustomerPayload,
   mode: "create" | "update",
 ): Record<string, unknown> {
-  // Zoho Inventory /customers uses "customer_name" — not "contact_name".
-  // contact_name and contact_type are Zoho Books /contacts concepts.
   const body: Record<string, unknown> = {
-    customer_name: payload.customer_name,
+    contact_name: payload.customer_name,
+    contact_type: "customer",
   };
 
   // Only include email/phone when they have a real value — never send "" or "undefined"
@@ -255,11 +255,12 @@ async function createZohoCustomer(
   orgId: string,
 ): Promise<{ contactId: string; raw: string }> {
   const body = buildContactBody(payload, "create");
-  const requestBody = JSON.stringify({ customer: body });
+  // Zoho Inventory /contacts expects the fields at the top level — no wrapper object.
+  const requestBody = JSON.stringify(body);
 
   console.log(`[Zoho] createCustomer REQUEST body: ${requestBody}`);
 
-  const res = await fetch(`${API_BASE}/customers?organization_id=${orgId}`, {
+  const res = await fetch(`${API_BASE}/contacts?organization_id=${orgId}`, {
     method: "POST",
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -285,7 +286,7 @@ async function createZohoCustomer(
     throw new Error(`Zoho createCustomer error code ${parsed.code}: ${parsed.message}`);
   }
 
-  const contactId = parsed.customer?.contact_id;
+  const contactId = parsed.contact?.contact_id;
   if (!contactId) throw new Error(`Zoho createCustomer returned no contact_id. Raw: ${raw}`);
 
   return { contactId, raw };
@@ -301,10 +302,10 @@ async function updateZohoCustomer(
   accessToken: string,
   orgId: string,
 ): Promise<string> {
-  const requestBody = JSON.stringify({ customer: buildContactBody(payload, "update") });
+  const requestBody = JSON.stringify(buildContactBody(payload, "update"));
   console.log(`[Zoho] updateCustomer ${contactId} REQUEST body: ${requestBody}`);
 
-  const res = await fetch(`${API_BASE}/customers/${contactId}?organization_id=${orgId}`, {
+  const res = await fetch(`${API_BASE}/contacts/${contactId}?organization_id=${orgId}`, {
     method: "PUT",
     headers: {
       Authorization: `Zoho-oauthtoken ${accessToken}`,

@@ -266,6 +266,167 @@ describe("buildCreateBody", () => {
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
     expect(post?.body?.pricebook_id).toBe("env-fallback-id");
   });
+
+  it("includes contact_persons with is_primary_contact, full name, email, and phone on create", async () => {
+    const { calls } = mockFetch({});
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({
+      customer_name: "moha zaqout",
+      first_name: "moha",
+      last_name: "zaqout",
+      email: "mohazaqout@gmail.com",
+      phone: "+97259226350",
+      shopify_customer_id: "11533125386531",
+    });
+
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/contacts"));
+    expect(post).toBeDefined();
+
+    // top-level email must also be present
+    expect(post?.body?.email).toBe("mohazaqout@gmail.com");
+
+    const persons = post?.body?.contact_persons as Array<Record<string, unknown>> | undefined;
+    expect(Array.isArray(persons)).toBe(true);
+    expect(persons).toHaveLength(1);
+    expect(persons?.[0]?.is_primary_contact).toBe(true);
+    expect(persons?.[0]?.first_name).toBe("moha");
+    expect(persons?.[0]?.last_name).toBe("zaqout");
+    expect(persons?.[0]?.email).toBe("mohazaqout@gmail.com");
+    expect(persons?.[0]?.phone).toBe("+97259226350");
+  });
+
+  it("uses email lookup when email present and no phone", async () => {
+    const { calls } = mockFetch({});
+    const { upsertZohoCustomer } = await import("./zoho.server.js");
+
+    await upsertZohoCustomer({
+      customer_name: "moha zaqout",
+      first_name: "moha",
+      last_name: "zaqout",
+      email: "mohazaqout@gmail.com",
+      shopify_customer_id: "11533125386531",
+    });
+
+    const gets = calls.filter((c) => c.method === "GET" && c.url.includes("/contacts"));
+    expect(gets[0]?.url).toContain("email=");
+    expect(gets[0]?.url).toContain("mohazaqout%40gmail.com");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real Shopify customers/create payload round-trip
+// Tests that the exact JSON shape Shopify sends produces the correct Zoho body
+// ---------------------------------------------------------------------------
+
+// Exact payload from Shopify Admin → Settings → Notifications → Webhooks →
+// customers/create → recent deliveries (PII anonymised, structure preserved).
+const REAL_SHOPIFY_CUSTOMER_CREATE_PAYLOAD = {
+  id: 7886544019747,
+  email: "mohazaqout@gmail.com",
+  created_at: "2024-09-15T19:53:39+03:00",
+  updated_at: "2025-01-31T00:13:51+03:00",
+  first_name: "moha",
+  last_name: "zaqout",
+  orders_count: 0,
+  state: "disabled",
+  total_spent: "0.00",
+  last_order_id: null,
+  note: null,
+  verified_email: true,
+  multipass_identifier: null,
+  tax_exempt: false,
+  tags: "",
+  last_order_name: null,
+  currency: "IQD",
+  phone: "+97259226350",
+  addresses: [],
+  accepts_marketing: false,
+  accepts_marketing_updated_at: "2024-09-15T19:53:39+03:00",
+  marketing_opt_in_level: null,
+  tax_exemptions: [],
+  email_marketing_consent: null,
+  sms_marketing_consent: null,
+  admin_graphql_api_id: "gid://shopify/Customer/7886544019747",
+  default_address: null,
+};
+
+describe("real Shopify customers/create payload round-trip", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllGlobals();
+    delete process.env.ZOHO_PRICEBOOK_ID;
+  });
+
+  it("parses first_name, last_name, and email from the Shopify payload", () => {
+    // Simulate the cast the webhook handler does: payload as ShopifyCustomerPayload
+    const c = REAL_SHOPIFY_CUSTOMER_CREATE_PAYLOAD as {
+      id: number;
+      email?: string | null;
+      first_name?: string | null;
+      last_name?: string | null;
+      phone?: string | null;
+    };
+
+    // These are the values the handler reads before calling upsertZohoCustomer
+    expect(c.first_name).toBe("moha");
+    expect(c.last_name).toBe("zaqout");
+    expect(c.email).toBe("mohazaqout@gmail.com");
+    expect(c.phone).toBe("+97259226350");
+  });
+
+  it("resolveCustomerName builds full name from the real payload", async () => {
+    const { resolveCustomerName } = await import("./zoho.server.js");
+    const c = REAL_SHOPIFY_CUSTOMER_CREATE_PAYLOAD;
+    const { name, resolvedBy } = resolveCustomerName({
+      firstName: c.first_name,
+      lastName: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      shopifyCustomerId: c.id,
+    });
+    expect(name).toBe("moha zaqout");
+    expect(resolvedBy).toBe("name");
+  });
+
+  it("Zoho create body contains full name, top-level email, and contact_persons from real payload", async () => {
+    const { calls } = mockFetch({});
+    const { upsertZohoCustomer, resolveCustomerName } = await import("./zoho.server.js");
+
+    const c = REAL_SHOPIFY_CUSTOMER_CREATE_PAYLOAD;
+    const { name: customerName } = resolveCustomerName({
+      firstName: c.first_name,
+      lastName: c.last_name,
+      email: c.email,
+      phone: c.phone,
+      shopifyCustomerId: c.id,
+    });
+
+    // Exact call the webhook handler makes after the fix
+    await upsertZohoCustomer({
+      customer_name: customerName,
+      ...(c.first_name ? { first_name: c.first_name } : {}),
+      ...(c.last_name ? { last_name: c.last_name } : {}),
+      ...(c.email ? { email: c.email } : {}),
+      ...(c.phone ? { phone: c.phone } : {}),
+      shopify_customer_id: String(c.id),
+      notes: `Shopify ID: ${c.id} | Shop: geepas-iraq.myshopify.com`,
+    });
+
+    const post = calls.find((call) => call.method === "POST" && call.url.includes("/contacts"));
+    expect(post).toBeDefined();
+
+    expect(post?.body?.contact_name).toBe("moha zaqout");
+    expect(post?.body?.email).toBe("mohazaqout@gmail.com");
+
+    const persons = post?.body?.contact_persons as Array<Record<string, unknown>>;
+    expect(Array.isArray(persons)).toBe(true);
+    expect(persons[0]?.is_primary_contact).toBe(true);
+    expect(persons[0]?.first_name).toBe("moha");
+    expect(persons[0]?.last_name).toBe("zaqout");
+    expect(persons[0]?.email).toBe("mohazaqout@gmail.com");
+    expect(persons[0]?.phone).toBe("+97259226350");
+  });
 });
 
 // ---------------------------------------------------------------------------

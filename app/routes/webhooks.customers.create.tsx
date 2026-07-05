@@ -24,16 +24,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const c = payload as ShopifyCustomerPayload;
 
-  // --- Derive missing first/last from default_address.name when possible ---
-  const addrName = c.default_address?.name?.trim() ?? "";
-  const nameParts = addrName ? addrName.split(/\s+/) : [];
-  const derivedFirst = c.first_name?.trim() || (nameParts[0] ?? "");
-  const derivedLast = c.last_name?.trim() || (nameParts.length > 1 ? nameParts.slice(1).join(" ") : "");
+  // --- RAW payload diagnostic (runs before any transformation) ---
+  console.log(
+    `[${topic}] RAW payload keys: ${Object.keys(c as object).join(", ")}`,
+  );
+  console.log(
+    `[${topic}] RAW first_name=${JSON.stringify(c.first_name)} ` +
+      `last_name=${JSON.stringify(c.last_name)} ` +
+      `email=${JSON.stringify(c.email)}`,
+  );
 
   // --- Resolve customer_name using the full fallback chain ---
   const { name: customerName, resolvedBy } = resolveCustomerName({
-    firstName: derivedFirst,
-    lastName: derivedLast,
+    firstName: c.first_name,
+    lastName: c.last_name,
     email: c.email,
     phone: c.phone,
     shopifyCustomerId: c.id,
@@ -69,8 +73,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const result = await upsertZohoCustomer({
       customer_name: customerName,
-      first_name: derivedFirst || undefined,
-      last_name: derivedLast || undefined,
+      // Pass name parts so buildCreateBody can populate contact_persons correctly
+      ...(c.first_name ? { first_name: c.first_name } : {}),
+      ...(c.last_name ? { last_name: c.last_name } : {}),
       // Only set email/phone when they exist — never send empty strings
       ...(c.email ? { email: c.email } : {}),
       ...(c.phone ? { phone: c.phone } : {}),
@@ -119,8 +124,6 @@ interface ShopifyAddress {
   zip?: string | null;
   country?: string | null;
   phone?: string | null;
-  /** Shopify often includes the full name on the default address */
-  name?: string | null;
 }
 
 interface ShopifyCustomerPayload {

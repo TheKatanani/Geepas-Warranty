@@ -1,67 +1,163 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { unauthenticated } from "../shopify.server";
+import {
+  escapeQueryTerm,
+  skuSearchTerms,
+  variantDisplayTitle,
+} from "../utils/sku-search.server";
+
+const MIN_QUERY_LENGTH = 3;
+const RESULT_LIMIT = 10;
+
+interface ProductSearchResult {
+  variantId: string;
+  productId: string;
+  sku: string | null;
+  productTitle: string;
+  variantTitle: string | null;
+  imageUrl: string | null;
+}
+
+const VARIANT_SEARCH_QUERY = `#graphql
+  query searchVariantsBySku($query: String!, $first: Int!) {
+    productVariants(first: $first, query: $query) {
+      edges {
+        node {
+          id
+          sku
+          title
+          image { url }
+          product {
+            id
+            title
+            status
+            featuredImage { url }
+          }
+        }
+      }
+    }
+  }`;
+
+const PRODUCT_NAME_SEARCH_QUERY = `#graphql
+  query searchProductsByTitle($query: String!, $first: Int!) {
+    products(first: $first, query: $query, sortKey: TITLE) {
+      edges {
+        node {
+          id
+          title
+          status
+          featuredImage { url }
+          variants(first: 1) {
+            edges {
+              node {
+                id
+                sku
+                title
+                image { url }
+              }
+            }
+          }
+        }
+      }
+    }
+  }`;
+
+async function searchVariantsBySku(
+  admin: any,
+  term: string,
+): Promise<ProductSearchResult[]> {
+  const terms = skuSearchTerms(term);
+  const queryFilter = terms
+    .map((t) => `sku:${escapeQueryTerm(t)}*`)
+    .join(" OR ");
+
+  const response = await admin.graphql(VARIANT_SEARCH_QUERY, {
+    variables: { query: queryFilter, first: RESULT_LIMIT * 2 },
+  });
+  const data = await response.json();
+  const edges = data?.data?.productVariants?.edges || [];
+
+  const seen = new Set<string>();
+  const results: ProductSearchResult[] = [];
+  for (const edge of edges) {
+    const node = edge.node;
+    if (node.product?.status !== "ACTIVE") continue;
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+
+    results.push({
+      variantId: node.id,
+      productId: node.product.id,
+      sku: node.sku || null,
+      productTitle: node.product.title,
+      variantTitle: variantDisplayTitle(node.title),
+      imageUrl: node.image?.url || node.product.featuredImage?.url || null,
+    });
+
+    if (results.length >= RESULT_LIMIT) break;
+  }
+  return results;
+}
+
+async function searchProductsByName(
+  admin: any,
+  term: string,
+): Promise<ProductSearchResult[]> {
+  const queryFilter = `title:*${escapeQueryTerm(term)}*`;
+
+  const response = await admin.graphql(PRODUCT_NAME_SEARCH_QUERY, {
+    variables: { query: queryFilter, first: RESULT_LIMIT },
+  });
+  const data = await response.json();
+  const edges = data?.data?.products?.edges || [];
+
+  return edges
+    .filter((e: any) => e.node.status === "ACTIVE")
+    .map((e: any): ProductSearchResult => {
+      const variant = e.node.variants?.edges?.[0]?.node;
+      return {
+        variantId: variant?.id || e.node.id,
+        productId: e.node.id,
+        sku: variant?.sku || null,
+        productTitle: e.node.title,
+        variantTitle: variantDisplayTitle(variant?.title),
+        imageUrl: variant?.image?.url || e.node.featuredImage?.url || null,
+      };
+    });
+}
 
 /**
- * GET /api/products?shop=store.myshopify.com&search=air+fryer
+ * GET /api/products?shop=store.myshopify.com&search=GA-1234
  *
- * Public endpoint - searches Shopify catalog products by title.
- * Returns product title, id, and first variant SKU.
+ * Public endpoint — searches the Shopify catalog by SKU (variant-level,
+ * prefix match). Falls back to a product-title search when no SKU matches
+ * are found, so customers who type the product name out of habit still get
+ * results ("Did you mean" on the frontend).
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const shop = url.searchParams.get("shop");
-  const search = url.searchParams.get("search") || "";
+  const search = (url.searchParams.get("search") || "").trim();
 
   if (!shop) {
     return json({ error: "shop query parameter is required" }, { status: 400 });
   }
 
+  if (search.length < MIN_QUERY_LENGTH) {
+    return json({ results: [], source: "sku" as const });
+  }
+
   try {
     const { admin } = await unauthenticated.admin(shop);
 
-    const queryFilter = search ? `title:*${search}*` : "";
+    const skuResults = await searchVariantsBySku(admin, search);
+    if (skuResults.length > 0) {
+      return json({ results: skuResults, source: "sku" as const });
+    }
 
-    const response = await admin.graphql(
-      `#graphql
-      query searchProducts($query: String!, $first: Int!) {
-        products(first: $first, query: $query, sortKey: TITLE) {
-          edges {
-            node {
-              id
-              title
-              status
-              variants(first: 1) {
-                edges {
-                  node {
-                    sku
-                  }
-                }
-              }
-            }
-          }
-        }
-      }`,
-      {
-        variables: {
-          query: queryFilter,
-          first: 25,
-        },
-      }
-    );
-
-    const data = await response.json();
-    const edges = data?.data?.products?.edges || [];
-
-    const products = edges
-      .filter((e: any) => e.node.status === "ACTIVE")
-      .map((e: any) => ({
-        id: e.node.id,
-        title: e.node.title,
-        sku: e.node.variants?.edges?.[0]?.node?.sku || null,
-      }));
-
-    return json({ products });
+    const nameResults = await searchProductsByName(admin, search);
+    return json({ results: nameResults, source: "name" as const });
   } catch (error: any) {
     console.error("[api.products] Error:", error);
     return json(
@@ -70,7 +166,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         debug: error instanceof Error ? error.message : error,
         stack: error instanceof Error ? error.stack : undefined,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 };

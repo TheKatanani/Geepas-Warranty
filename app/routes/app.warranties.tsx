@@ -14,7 +14,6 @@ import {
   Badge,
   IndexFilters,
   useSetIndexFiltersMode,
-  useIndexResourceState,
   EmptySearchResult,
   Modal,
   BlockStack,
@@ -22,10 +21,16 @@ import {
   Button,
   Divider,
   Tag,
+  TextField,
+  Popover,
+  ActionList,
+  Banner,
+  IndexTableSelectionType as SelectionType,
 } from "@shopify/polaris";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
+import { buildRegistrationWhere } from "../utils/registration-filters.server";
 
 // ---------- Loader ----------
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -35,31 +40,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const search = url.searchParams.get("search") || "";
   const status = url.searchParams.get("status") || "all";
+  const phone = url.searchParams.get("phone") || "";
   const page = parseInt(url.searchParams.get("page") || "1", 10);
   const pageSize = 20;
 
   // Build where clause — always scoped to current shop
-  const where: any = { shop };
-
-  if (status !== "all") {
-    where.status = status;
-  }
-
-  if (search) {
-    where.OR = [
-      { firstName: { contains: search } },
-      { email: { contains: search } },
-      { phone: { contains: search } },
-      { invoiceNumber: { contains: search } },
-      { city: { contains: search } },
-      { store: { contains: search } },
-      {
-        products: {
-          some: { productTitle: { contains: search } },
-        },
-      },
-    ];
-  }
+  const where = buildRegistrationWhere(shop, { search, status, phone });
 
   const [registrations, total] = await Promise.all([
     prisma.warrantyRegistration.findMany({
@@ -107,6 +93,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalPages,
     search,
     status,
+    phone,
   });
 };
 
@@ -142,7 +129,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 // ---------- Component ----------
 export default function WarrantiesPage() {
-  const { registrations, rewards, total, page, totalPages, search, status } =
+  const { registrations, rewards, total, page, totalPages, search, status, phone } =
     useLoaderData<typeof loader>();
   const [searchParams, setSearchParams] = useSearchParams();
   const submit = useSubmit();
@@ -150,6 +137,14 @@ export default function WarrantiesPage() {
   // Search & filter state
   const [queryValue, setQueryValue] = useState(search);
   const [statusFilter, setStatusFilter] = useState(status);
+  const [phoneQuery, setPhoneQuery] = useState(phone);
+  const phoneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+    };
+  }, []);
 
   // Detail modal state
   const [selectedReg, setSelectedReg] = useState<
@@ -164,8 +159,106 @@ export default function WarrantiesPage() {
     plural: "registrations",
   };
 
-  const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(registrations);
+  // Selection is tracked by ID (not Polaris's built-in per-page state) so
+  // checked rows survive pagination.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const handleSelectionChange = useCallback(
+    (
+      selectionType: SelectionType,
+      toggleType: boolean,
+      selection?: string | [number, number],
+    ) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (
+          selectionType === SelectionType.All ||
+          selectionType === SelectionType.Page
+        ) {
+          registrations.forEach((r) => {
+            if (toggleType) next.add(r.id);
+            else next.delete(r.id);
+          });
+        } else if (selectionType === SelectionType.Single) {
+          const id = selection as string;
+          if (toggleType) next.add(id);
+          else next.delete(id);
+        } else if (selectionType === SelectionType.Range) {
+          const [start, end] = selection as [number, number];
+          for (let i = start; i <= end; i++) {
+            const id = registrations[i]?.id;
+            if (!id) continue;
+            if (toggleType) next.add(id);
+            else next.delete(id);
+          }
+        }
+        return next;
+      });
+    },
+    [registrations],
+  );
+
+  // ---------- Export ----------
+  const [exportPopoverActive, setExportPopoverActive] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  const downloadFromResponse = useCallback(async (res: Response) => {
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    const filename = match?.[1] || "warranty-registrations.xlsx";
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const runExport = useCallback(
+    async (fetchExport: () => Promise<Response>) => {
+      setExportPopoverActive(false);
+      setExportError("");
+      setIsExporting(true);
+      try {
+        const res = await fetchExport();
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body.error || `Export failed (${res.status})`);
+        }
+        await downloadFromResponse(res);
+      } catch (err: any) {
+        setExportError(err?.message || "Export failed. Please try again.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [downloadFromResponse],
+  );
+
+  const handleExportAll = useCallback(() => {
+    runExport(() => {
+      const params = new URLSearchParams();
+      if (queryValue) params.set("search", queryValue);
+      if (statusFilter && statusFilter !== "all") params.set("status", statusFilter);
+      if (phoneQuery) params.set("phone", phoneQuery);
+      return fetch(`/app/registrations/export?${params.toString()}`);
+    });
+  }, [runExport, queryValue, statusFilter, phoneQuery]);
+
+  const handleExportSelected = useCallback(() => {
+    runExport(() =>
+      fetch("/app/registrations/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      }),
+    );
+  }, [runExport, selectedIds]);
 
   // ---------- Handlers ----------
   const handleSearch = useCallback((value: string) => {
@@ -190,6 +283,24 @@ export default function WarrantiesPage() {
     params.set("page", "1");
     setSearchParams(params);
   }, [queryValue, searchParams, setSearchParams]);
+
+  const handlePhoneSearch = useCallback(
+    (value: string) => {
+      setPhoneQuery(value);
+      if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+      phoneDebounceRef.current = setTimeout(() => {
+        const params = new URLSearchParams(searchParams);
+        if (value) {
+          params.set("phone", value);
+        } else {
+          params.delete("phone");
+        }
+        params.set("page", "1");
+        setSearchParams(params);
+      }, 300);
+    },
+    [searchParams, setSearchParams],
+  );
 
   const handleStatusChange = useCallback(
     (value: string) => {
@@ -271,7 +382,7 @@ export default function WarrantiesPage() {
       <IndexTable.Row
         id={reg.id}
         key={reg.id}
-        selected={selectedResources.includes(reg.id)}
+        selected={selectedIds.has(reg.id)}
         position={index}
         onClick={() => {
           setSelectedReg(reg);
@@ -335,6 +446,56 @@ export default function WarrantiesPage() {
     >
       <Layout>
         <Layout.Section>
+          <Card>
+            <BlockStack gap="300">
+              <InlineStack gap="400" align="space-between" blockAlign="end" wrap>
+                <div style={{ minWidth: "280px", flex: 1 }}>
+                  <TextField
+                    label="Search by phone"
+                    labelHidden
+                    placeholder="Search by phone number..."
+                    value={phoneQuery}
+                    onChange={handlePhoneSearch}
+                    autoComplete="off"
+                    clearButton
+                    onClearButtonClick={() => handlePhoneSearch("")}
+                  />
+                </div>
+                <Popover
+                  active={exportPopoverActive}
+                  onClose={() => setExportPopoverActive(false)}
+                  activator={
+                    <Button
+                      disclosure
+                      loading={isExporting}
+                      onClick={() => setExportPopoverActive((v) => !v)}
+                    >
+                      Export
+                    </Button>
+                  }
+                >
+                  <ActionList
+                    items={[
+                      {
+                        content: "Export all (with current filters)",
+                        onAction: handleExportAll,
+                      },
+                      {
+                        content: "Export selected",
+                        disabled: selectedIds.size === 0,
+                        onAction: handleExportSelected,
+                      },
+                    ]}
+                  />
+                </Popover>
+              </InlineStack>
+              {exportError && (
+                <Banner tone="critical" onDismiss={() => setExportError("")}>
+                  {exportError}
+                </Banner>
+              )}
+            </BlockStack>
+          </Card>
           <Card padding="0">
             <IndexFilters
               queryValue={queryValue}
@@ -355,9 +516,7 @@ export default function WarrantiesPage() {
             <IndexTable
               resourceName={resourceName}
               itemCount={registrations.length}
-              selectedItemsCount={
-                allResourcesSelected ? "All" : selectedResources.length
-              }
+              selectedItemsCount={selectedIds.size}
               onSelectionChange={handleSelectionChange}
               headings={[
                 { title: "Name" },

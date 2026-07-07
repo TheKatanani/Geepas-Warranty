@@ -38,3 +38,29 @@ export function normalizePhone(raw: string): string | null {
   // Bare national number — assume Iraqi.
   return "+964" + digits;
 }
+
+/**
+ * Derive a suffix to match phone numbers stored in E.164 format, tolerant of
+ * how the searcher typed the query: full international ("+9647701234567"),
+ * local with trunk zero ("07701234567"), bare national ("7701234567"), or
+ * just the trailing digits someone remembers ("34567", min 4 digits).
+ *
+ * Unlike normalizePhone, a leading "0"/"964"/"00" here is treated as a prefix
+ * to strip (not a value to keep) since callers only ever want to compare
+ * against the tail of the stored number via `endsWith`.
+ *
+ * Returns null when there are fewer than 4 usable digits — too short to
+ * search on without matching almost everything.
+ */
+export function phoneSearchSuffix(raw: string): string | null {
+  const cleaned = raw.trim().replace(/[\s\-\(\)]/g, "");
+  let digits = cleaned.replace(/^\+/, "").replace(/\D/g, "");
+
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.startsWith("964")) digits = digits.slice(3);
+  else if (digits.startsWith("0")) digits = digits.slice(1);
+
+  if (digits.length < 4) return null;
+
+  return digits.slice(-10);
+}

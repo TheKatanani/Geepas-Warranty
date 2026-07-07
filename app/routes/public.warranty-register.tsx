@@ -83,9 +83,12 @@ const T = {
     backBtn: "← Back",
     step3Title: "Add your products",
     step3Desc: "Search from our catalog or add a product manually.",
-    searchLabel: "Search Products",
-    searchPlaceholder: "Type to search (e.g. Air Fryer)",
+    searchLabel: "SKU",
+    searchPlaceholder: "Type the SKU (e.g. GA-1234)",
     searching: "Searching...",
+    skuEmptyState:
+      "No product found for this SKU — check the code on your receipt or product box.",
+    didYouMean: "Did you mean:",
     cantFind: "Can't find your product? Enter manually",
     cancelManual: "Cancel manual entry",
     manualPlaceholder: "Product name (e.g. Geepas Air Fryer 5L)",
@@ -162,9 +165,12 @@ const T = {
     backBtn: "رجوع →",
     step3Title: "أضف منتجاتك",
     step3Desc: "ابحث في الكتالوج أو أضف منتجاً يدوياً.",
-    searchLabel: "البحث عن المنتجات",
-    searchPlaceholder: "اكتب للبحث (مثال: مقلاة هوائية)",
+    searchLabel: "رقم المنتج",
+    searchPlaceholder: "أدخل رمز المنتج (SKU)",
     searching: "جارٍ البحث...",
+    skuEmptyState:
+      "لم يتم العثور على منتج بهذا الرمز — تحقق من الرمز الموجود على الفاتورة أو علبة المنتج.",
+    didYouMean: "هل تقصد:",
     cantFind: "لا تجد منتجك؟ أضفه يدوياً",
     cancelManual: "إلغاء الإدخال اليدوي",
     manualPlaceholder: "اسم المنتج (مثال: مقلاة جيباس الهوائية 5 لتر)",
@@ -235,9 +241,12 @@ interface ProductEntry {
 }
 
 interface ShopifyProduct {
-  id: string;
-  title: string;
+  variantId: string;
+  productId: string;
   sku: string | null;
+  productTitle: string;
+  variantTitle: string | null;
+  imageUrl: string | null;
 }
 
 interface FormErrors {
@@ -519,9 +528,9 @@ const GEEPAS_CSS = `
   }
   .gw-drop-item {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 11px 13px;
+    gap: 10px;
+    padding: 9px 13px;
     border: none;
     border-bottom: 1px solid #f5f5f5;
     background: transparent;
@@ -537,6 +546,34 @@ const GEEPAS_CSS = `
   .gw-drop-item:hover       { background: #fff5f5; }
   .gw-drop-item:last-child  { border-bottom: none; }
   .gw-drop-sku { font-size: 11px; color: #bbb; }
+  .gw-drop-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    object-fit: cover;
+    flex-shrink: 0;
+    background: #f0f0f0;
+  }
+  .gw-drop-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .gw-drop-sku-main {
+    font-weight: 700;
+    font-size: 13px;
+    color: #1a1a1a;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+  .gw-drop-title { font-size: 12px; color: #777; }
+  .gw-drop-divider {
+    padding: 6px 13px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    background: #fafafa;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .gw-input--ltr { direction: ltr; text-align: left; }
 
   .gw-manual-row { display: flex; gap: 8px; align-items: center; }
   .gw-manual-row .gw-input { flex: 1; width: auto; }
@@ -752,6 +789,7 @@ export default function WarrantyRegister() {
   const [products, setProducts] = useState<ProductEntry[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<ShopifyProduct[]>([]);
+  const [searchSource, setSearchSource] = useState<"sku" | "name">("sku");
   const [isSearching, setIsSearching] = useState(false);
   const [showManualEntry, setShowManualEntry] = useState(false);
   const [manualTitle, setManualTitle] = useState("");
@@ -832,8 +870,9 @@ export default function WarrantyRegister() {
         clearTimeout(searchTimeoutRef.current);
       }
 
-      if (query.length < 2) {
+      if (query.trim().length < 3) {
         setSearchResults([]);
+        setSearchSource("sku");
         return;
       }
 
@@ -844,9 +883,11 @@ export default function WarrantyRegister() {
             `/api/products?shop=${encodeURIComponent(shop)}&search=${encodeURIComponent(query)}`,
           );
           const data = await res.json();
-          setSearchResults(data.products || []);
+          setSearchResults(data.results || []);
+          setSearchSource(data.source === "name" ? "name" : "sku");
         } catch {
           setSearchResults([]);
+          setSearchSource("sku");
         } finally {
           setIsSearching(false);
         }
@@ -857,13 +898,13 @@ export default function WarrantyRegister() {
 
   const addProduct = useCallback((product: ShopifyProduct) => {
     setProducts((prev) => {
-      if (prev.some((p) => p.productId === product.id)) return prev;
+      if (prev.some((p) => p.productId === product.variantId)) return prev;
       return [
         ...prev,
         {
           id: crypto.randomUUID(),
-          productId: product.id,
-          productTitle: product.title,
+          productId: product.variantId,
+          productTitle: product.productTitle,
           sku: product.sku,
           isManual: false,
         },
@@ -871,6 +912,7 @@ export default function WarrantyRegister() {
     });
     setProductSearch("");
     setSearchResults([]);
+    setSearchSource("sku");
   }, []);
 
   const addManualProduct = useCallback(() => {
@@ -1270,7 +1312,7 @@ export default function WarrantyRegister() {
               <h2 className="gw-step-title">{t.step3Title}</h2>
               <p className="gw-step-desc">{t.step3Desc}</p>
 
-              {/* Product Search */}
+              {/* Product Search (by SKU) */}
               <div className="gw-field">
                 <label htmlFor="product-search" className="gw-label">
                   {t.searchLabel}
@@ -1278,26 +1320,45 @@ export default function WarrantyRegister() {
                 <input
                   id="product-search"
                   type="text"
+                  dir="ltr"
                   value={productSearch}
                   onChange={(e) => handleProductSearch(e.target.value)}
                   placeholder={t.searchPlaceholder}
-                  className="gw-input"
+                  className="gw-input gw-input--ltr"
                 />
                 {isSearching && <p className="gw-hint">{t.searching}</p>}
+                {!isSearching &&
+                  productSearch.trim().length >= 3 &&
+                  searchResults.length === 0 && (
+                    <p className="gw-hint">{t.skuEmptyState}</p>
+                  )}
                 {searchResults.length > 0 && (
                   <div className="gw-dropdown">
+                    {searchSource === "name" && (
+                      <div className="gw-drop-divider">{t.didYouMean}</div>
+                    )}
                     {searchResults.map((p) => (
                       <button
-                        key={p.id}
+                        key={p.variantId}
                         className="gw-drop-item"
                         onClick={() => addProduct(p)}
                       >
-                        <span style={{ fontWeight: 500 }}>{p.title}</span>
-                        {p.sku && (
-                          <span className="gw-drop-sku">
-                            {t.skuLabel}: {p.sku}
-                          </span>
+                        {p.imageUrl && (
+                          <img
+                            src={p.imageUrl}
+                            alt=""
+                            className="gw-drop-thumb"
+                          />
                         )}
+                        <span className="gw-drop-info">
+                          {p.sku && (
+                            <span className="gw-drop-sku-main">{p.sku}</span>
+                          )}
+                          <span className="gw-drop-title">
+                            {p.productTitle}
+                            {p.variantTitle ? ` — ${p.variantTitle}` : ""}
+                          </span>
+                        </span>
                       </button>
                     ))}
                   </div>

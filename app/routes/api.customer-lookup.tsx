@@ -46,7 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           }
         }
       }`;
-    const variables = { query: `phone:${normalized}` };
+    const variables = { query: `phone:"${normalized}"` };
 
     console.log("[customer-lookup] Shopify lookup query:", query, "variables:", variables);
 

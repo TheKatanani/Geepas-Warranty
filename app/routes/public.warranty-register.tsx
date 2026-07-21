@@ -79,7 +79,7 @@ const T = {
     storePlaceholder: "Store where you purchased",
     purchaseDateLabel: "Purchase Date",
     invoiceLabel: "Invoice Number",
-    invoicePlaceholder: "Optional",
+    invoicePlaceholder: "e.g. INV-00123",
     backBtn: "← Back",
     step3Title: "Add your products",
     step3Desc: "Search from our catalog or add a product manually.",
@@ -130,6 +130,7 @@ const T = {
     errCity: "City is required.",
     errStore: "Store name is required.",
     errDate: "Purchase date is required.",
+    errInvoice: "Invoice number is required.",
     errProducts: "Add at least one product.",
     errNetwork: "Network error. Please try again.",
     skuLabel: "SKU",
@@ -161,7 +162,7 @@ const T = {
     storePlaceholder: "المتجر الذي اشتريت منه",
     purchaseDateLabel: "تاريخ الشراء",
     invoiceLabel: "رقم الفاتورة",
-    invoicePlaceholder: "اختياري",
+    invoicePlaceholder: "مثال: INV-00123",
     backBtn: "رجوع →",
     step3Title: "أضف منتجاتك",
     step3Desc: "ابحث في الكتالوج أو أضف منتجاً يدوياً.",
@@ -212,6 +213,7 @@ const T = {
     errCity: "المدينة مطلوبة.",
     errStore: "اسم المتجر مطلوب.",
     errDate: "تاريخ الشراء مطلوب.",
+    errInvoice: "رقم الفاتورة مطلوب.",
     errProducts: "أضف منتجاً واحداً على الأقل.",
     errNetwork: "خطأ في الشبكة. يرجى المحاولة مرة أخرى.",
     skuLabel: "الرمز",
@@ -297,7 +299,15 @@ const GEEPAS_CSS = `
     display: flex;
     flex-direction: column;
     line-height: 1;
-    gap: 2px;
+    gap: 6px;
+  }
+  .gw-logo-image {
+    display: block;
+    height: 22px;
+    width: auto;
+    background: #ffffff;
+    border-radius: 6px;
+    padding: 5px 10px;
   }
   .gw-logo-wordmark {
     font-size: 22px;
@@ -946,9 +956,10 @@ export default function WarrantyRegister() {
     if (!city) newErrors.city = tr.errCity;
     if (!storeName.trim()) newErrors.store = tr.errStore;
     if (!purchaseDate) newErrors.purchaseDate = tr.errDate;
+    if (!invoiceNumber.trim()) newErrors.invoice = tr.errInvoice;
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  }, [fullName, email, city, storeName, purchaseDate, lang]);
+  }, [fullName, email, city, storeName, purchaseDate, invoiceNumber, lang]);
 
   const validateProducts = useCallback((): boolean => {
     const tr = T[lang];
@@ -1060,7 +1071,11 @@ export default function WarrantyRegister() {
         <div className="gw-header">
           <div className="gw-header-top">
             <div className="gw-logo">
-              <span className="gw-logo-wordmark">GEEPAS</span>
+              <img
+                className="gw-logo-image"
+                src="https://cdn.shopify.com/s/files/1/0820/2226/9219/files/geepas-logo_270x.png_v_1712827827.png?v=1771848183"
+                alt="Geepas"
+              />
               <span className="gw-logo-tagline">
                 From Our Home to Your Home
               </span>
@@ -1271,7 +1286,7 @@ export default function WarrantyRegister() {
                   )}
                 </div>
 
-                {/* Invoice Number (optional) */}
+                {/* Invoice Number (required) */}
                 <div className="gw-field">
                   <label htmlFor="reg-invoice" className="gw-label">
                     {t.invoiceLabel}
@@ -1283,7 +1298,11 @@ export default function WarrantyRegister() {
                     onChange={(e) => setInvoiceNumber(e.target.value)}
                     placeholder={t.invoicePlaceholder}
                     className="gw-input"
+                    required
                   />
+                  {errors.invoice && (
+                    <p className="gw-err">{errors.invoice}</p>
+                  )}
                 </div>
               </div>
 

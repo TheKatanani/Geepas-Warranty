@@ -50,6 +50,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!city) errors.push("City is required.");
     if (!store) errors.push("Store is required.");
     if (!purchaseDate) errors.push("Purchase date is required.");
+    if (!invoiceNumber || !invoiceNumber.trim())
+      errors.push("Invoice number is required.");
     if (!products || !Array.isArray(products) || products.length === 0)
       errors.push("At least one product is required.");
 
@@ -233,7 +235,7 @@ async function createOrUpdateShopifyCustomer(
         }
       }
     }`;
-  const variablesEmail = { query: `email:${input.email}` };
+  const variablesEmail = { query: `email:"${input.email}"` };
   console.log("[createOrUpdateShopifyCustomer] Checking existing email:", variablesEmail);
 
   const emailCheckResponse = await admin.graphql(queryEmail, { variables: variablesEmail });

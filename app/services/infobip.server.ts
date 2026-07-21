@@ -58,59 +58,65 @@ function buildMessage(params: InfobipSmsParams): string {
     registrationId,
     registrationDate,
     voucherExpiryDays = 30,
-    lang = "ar",
     rewardType,
   } = params;
+
+  // Every SMS is sent bilingual (Arabic + English in the same message) per
+  // client request — customers should not have to guess which language a
+  // one-time code arrived in. The `lang` param is kept on the params type for
+  // callers/tests but no longer picks a single template.
 
   // Order-triggered discount rewards get their own template — they have no
   // warranty fields, so they must never fall through to the warranty template
   // (which would put the reward id in the رقم الضمان slot).
   if (rewardType === "SECOND15") {
-    return lang === "ar"
-      ? `مرحباً ${customerName}، شكراً لطلبك من Geepas! كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`
-      : `Hello ${customerName}, thank you for your order from Geepas! Here's your 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+    const ar = `مرحباً ${customerName}، شكراً لطلبك من Geepas! كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`;
+    const en = `Hello ${customerName}, thank you for your order from Geepas! Here's your 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+    return `${ar}\n\n${en}`;
   }
 
   if (rewardType === "NEXT15") {
-    return lang === "ar"
-      ? `مرحباً ${customerName}، شكراً لثقتك المستمرة بـ Geepas! حصلت على كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`
-      : `Hello ${customerName}, thank you for continuing to shop with Geepas! You've earned a 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+    const ar = `مرحباً ${customerName}، شكراً لثقتك المستمرة بـ Geepas! حصلت على كود خصم 15% على طلبك القادم: ${voucherCode} — صالح لمدة ${voucherExpiryDays} يوم. استخدم الكود عند الشراء.`;
+    const en = `Hello ${customerName}, thank you for continuing to shop with Geepas! You've earned a 15% discount code for your next order: ${voucherCode} — valid for ${voucherExpiryDays} days. Use the code at checkout.`;
+    return `${ar}\n\n${en}`;
   }
 
   // Default: warranty-registration template (rewardType undefined or WARRANTY*)
-  const dateStr = registrationDate.toLocaleDateString(
-    lang === "ar" ? "ar-IQ" : "en-GB",
-    { year: "numeric", month: "long", day: "numeric" },
-  );
+  const dateStrAr = registrationDate.toLocaleDateString("ar-IQ", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const dateStrEn = registrationDate.toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
-  if (lang === "ar") {
-    const voucherBlock = voucherCode
-      ? `\nكود الخصم الخاص بك: ${voucherCode}\nصلاحيته: ${voucherExpiryDays} يوم\n\nاستخدم الكود عند الشراء`
-      : "";
-
-    return (
-      `مرحباً ${customerName}،\n\n` +
-      `شكراً لتسجيل ضمان ${productName}\n` +
-      `رقم الضمان: ${registrationId}\n` +
-      `مدة الضمان: ${warrantyDays} يوم\n` +
-      `تاريخ التسجيل: ${dateStr}` +
-      voucherBlock
-    );
-  }
-
-  // English fallback
-  const voucherBlock = voucherCode
+  const voucherBlockAr = voucherCode
+    ? `\nكود الخصم الخاص بك: ${voucherCode}\nصلاحيته: ${voucherExpiryDays} يوم\n\nاستخدم الكود عند الشراء`
+    : "";
+  const voucherBlockEn = voucherCode
     ? `\nYour discount code: ${voucherCode}\nValid for: ${voucherExpiryDays} days\n\nUse the code at checkout.`
     : "";
 
-  return (
+  const ar =
+    `مرحباً ${customerName}،\n\n` +
+    `شكراً لتسجيل ضمان ${productName}\n` +
+    `رقم الضمان: ${registrationId}\n` +
+    `مدة الضمان: ${warrantyDays} يوم\n` +
+    `تاريخ التسجيل: ${dateStrAr}` +
+    voucherBlockAr;
+
+  const en =
     `Hello ${customerName},\n\n` +
     `Thank you for registering your ${productName} warranty.\n` +
     `Warranty ID: ${registrationId}\n` +
     `Duration: ${warrantyDays} days\n` +
-    `Registration date: ${dateStr}` +
-    voucherBlock
-  );
+    `Registration date: ${dateStrEn}` +
+    voucherBlockEn;
+
+  return `${ar}\n\n----------\n\n${en}`;
 }
 
 // ---- Core send function ---------------------------------------------------

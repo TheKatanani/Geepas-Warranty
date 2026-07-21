@@ -303,7 +303,7 @@ const GEEPAS_CSS = `
   }
   .gw-logo-image {
     display: block;
-    height: 22px;
+    height: 39px;
     width: auto;
     background: #ffffff;
     border-radius: 6px;

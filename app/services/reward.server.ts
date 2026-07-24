@@ -207,6 +207,7 @@ export async function issueRewardAndNotify(
     lang: "ar",
     shop,
     rewardType,
+    discountPercentage,
   });
 
   // ---- 3. Persist SMSLog (skip on dedup — already logged on the original send) ---

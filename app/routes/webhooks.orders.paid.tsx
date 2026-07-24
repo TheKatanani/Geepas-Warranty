@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
+import { authenticate, unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/phone.server";
 import { issueRewardAndNotify } from "../services/reward.server";
 import prisma from "../db.server";
@@ -171,6 +171,80 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         `[voucher1] subtotal ${subtotal} ${currency} < 100000 — skipping NEXT15`,
       );
     }
+  }
+
+  // ---- Single-use Gift Cards: Deactivate used gift cards immediately -----------
+  try {
+    const orderId = order.id;
+    // Fetch the transactions using the Admin client to find used gift cards
+    const { admin } = await unauthenticated.admin(shop);
+    
+    const transactionsQuery = `#graphql
+      query getOrderTransactions($id: ID!) {
+        order(id: $id) {
+          transactions {
+            gateway
+            receiptJson
+          }
+        }
+      }
+    `;
+    const response = await admin.graphql(transactionsQuery, {
+      variables: { id: `gid://shopify/Order/${orderId}` }
+    });
+    const data = (await response.json()) as any;
+    const transactions = data?.data?.order?.transactions ?? [];
+    
+    for (const tx of transactions) {
+      let giftCardId: string | null = null;
+      
+      // Parse receiptJson if present
+      if (tx.receiptJson) {
+        try {
+          const receipt = JSON.parse(tx.receiptJson);
+          if (receipt.gift_card_id) {
+            giftCardId = `gid://shopify/GiftCard/${receipt.gift_card_id}`;
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      // If we identified a used gift card, deactivate it immediately
+      if (giftCardId) {
+        console.log(`[orders/paid] Deactivating used gift card: ${giftCardId}`);
+        const deactivateMutation = `#graphql
+          mutation giftCardDeactivate($id: ID!) {
+            giftCardDeactivate(id: $id) {
+              giftCard {
+                id
+                deactivatedAt
+              }
+              userErrors {
+                message
+                field
+                code
+              }
+            }
+          }
+        `;
+        const deactivateResponse = await admin.graphql(deactivateMutation, {
+          variables: { id: giftCardId }
+        });
+        const deactivateData = (await deactivateResponse.json()) as any;
+        const errors = deactivateData?.data?.giftCardDeactivate?.userErrors ?? [];
+        if (errors.length > 0) {
+          console.error(
+            `[orders/paid] Failed to deactivate gift card ${giftCardId}:`,
+            errors.map((e: any) => e.message).join(", ")
+          );
+        } else {
+          console.log(`[orders/paid] Successfully deactivated gift card ${giftCardId}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[orders/paid] Error processing single-use gift cards deactivation:`, err);
   }
 
   return new Response(null, { status: 200 });

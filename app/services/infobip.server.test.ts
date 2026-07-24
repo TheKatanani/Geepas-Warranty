@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Mock } from "vitest";
 
-// db.server is mocked so the DB-backed dedup check inside sendWarrantySms
-// never touches a real database — it just needs to resolve "no recent send".
+// Mock DB server
 vi.mock("../db.server", () => ({
   default: {
     sMSLog: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
   },
 }));
+
+// Set environment variables for tests
+process.env.INFOBIP_API_KEY = "dummy-api-key";
+process.env.INFOBIP_BASE_URL = "https://dummy-base-url.api.infobip.com";
+process.env.INFOBIP_WHATSAPP_SENDER = "447860099299";
 
 import prisma from "../db.server";
 import { sendWarrantySms } from "./infobip.server";
@@ -26,14 +31,12 @@ function mockInfobipFetch() {
   });
 }
 
-/** Pulls the SMS body text out of the (mocked) fetch call sent to Infobip. */
-function extractSentText(fetchMock: Mock): string {
+function extractSentPayload(fetchMock: Mock): any {
   const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-  const payload = JSON.parse(options.body as string);
-  return payload.messages[0].text as string;
+  return JSON.parse(options.body as string);
 }
 
-describe("sendWarrantySms — SMS template selected by rewardType", () => {
+describe("sendWarrantySms — WhatsApp Template Mapping", () => {
   let fetchMock: Mock;
 
   beforeEach(() => {
@@ -42,7 +45,7 @@ describe("sendWarrantySms — SMS template selected by rewardType", () => {
     vi.stubGlobal("fetch", fetchMock);
   });
 
-  it("uses the warranty template (with رقم الضمان / مدة الضمان / تاريخ التسجيل) when rewardType is absent", async () => {
+  it("uses the warranty template (warranty_registration) with 10 placeholders when rewardType is absent", async () => {
     await sendWarrantySms({
       phoneNumber: "07701234567",
       customerName: "Ali",
@@ -50,20 +53,37 @@ describe("sendWarrantySms — SMS template selected by rewardType", () => {
       productName: "Geepas Blender",
       warrantyDays: 365,
       registrationId: "reg-1",
-      registrationDate: new Date("2026-01-01"),
+      registrationDate: new Date("2026-01-01T12:00:00.000Z"),
       voucherExpiryDays: 30,
       lang: "ar",
       shop: "test.myshopify.com",
-      // no rewardType -> warranty-registration path
     });
 
-    const text = extractSentText(fetchMock);
-    expect(text).toContain("رقم الضمان");
-    expect(text).toContain("مدة الضمان");
-    expect(text).toContain("تاريخ التسجيل");
+    const payload = extractSentPayload(fetchMock);
+    const message = payload.messages[0];
+
+    expect(message.to).toBe("+9647701234567");
+    expect(message.content.templateName).toBe("warranty_registration");
+    
+    const placeholders = message.content.templateData.body.placeholders;
+    expect(placeholders.length).toBe(10);
+    
+    // Arabic portion
+    expect(placeholders[0]).toBe("Ali");
+    expect(placeholders[1]).toBe("Geepas Blender");
+    expect(placeholders[2]).toBe("reg-1");
+    expect(placeholders[3]).toBe("365");
+    expect(placeholders[4]).toContain("٢٠٢٦");
+
+    // English portion (duplicates)
+    expect(placeholders[5]).toBe("Ali");
+    expect(placeholders[6]).toBe("Geepas Blender");
+    expect(placeholders[7]).toBe("reg-1");
+    expect(placeholders[8]).toBe("365");
+    expect(placeholders[9]).toContain("2026");
   });
 
-  it("uses a discount-only template for SECOND15 — no warranty fields", async () => {
+  it("uses the voucher template (voucher_code) with 8 placeholders for SECOND15", async () => {
     await sendWarrantySms({
       phoneNumber: "07701234567",
       customerName: "Sara",
@@ -78,15 +98,29 @@ describe("sendWarrantySms — SMS template selected by rewardType", () => {
       rewardType: "SECOND15",
     });
 
-    const text = extractSentText(fetchMock);
-    expect(text).toContain("SECOND15-222"); // discount code present
-    expect(text).toContain("60"); // validity period present
-    expect(text).not.toContain("رقم الضمان");
-    expect(text).not.toContain("مدة الضمان");
-    expect(text).not.toContain("تاريخ التسجيل");
+    const payload = extractSentPayload(fetchMock);
+    const message = payload.messages[0];
+
+    expect(message.to).toBe("+9647701234567");
+    expect(message.content.templateName).toBe("voucher_code");
+    
+    const placeholders = message.content.templateData.body.placeholders;
+    expect(placeholders.length).toBe(8);
+
+    // Arabic portion
+    expect(placeholders[0]).toBe("Sara");
+    expect(placeholders[1]).toBe("15");
+    expect(placeholders[2]).toBe("SECOND15-222");
+    expect(placeholders[3]).toBe("60");
+
+    // English portion
+    expect(placeholders[4]).toBe("Sara");
+    expect(placeholders[5]).toBe("15");
+    expect(placeholders[6]).toBe("SECOND15-222");
+    expect(placeholders[7]).toBe("60");
   });
 
-  it("uses a discount-only template for NEXT15 — no warranty fields", async () => {
+  it("uses the voucher template (voucher_code) with 8 placeholders for NEXT15", async () => {
     await sendWarrantySms({
       phoneNumber: "07701234567",
       customerName: "Omar",
@@ -95,54 +129,31 @@ describe("sendWarrantySms — SMS template selected by rewardType", () => {
       warrantyDays: 365,
       registrationId: "order-3-next15",
       registrationDate: new Date("2026-01-01"),
-      voucherExpiryDays: 60,
+      voucherExpiryDays: 45,
       lang: "ar",
       shop: "test.myshopify.com",
       rewardType: "NEXT15",
     });
 
-    const text = extractSentText(fetchMock);
-    expect(text).toContain("NEXT15-333"); // discount code present
-    expect(text).toContain("60"); // validity period present
-    expect(text).not.toContain("رقم الضمان");
-    expect(text).not.toContain("مدة الضمان");
-    expect(text).not.toContain("تاريخ التسجيل");
-  });
+    const payload = extractSentPayload(fetchMock);
+    const message = payload.messages[0];
 
-  it("SECOND15 and NEXT15 bodies are worded differently from each other", async () => {
-    await sendWarrantySms({
-      phoneNumber: "07701234567",
-      customerName: "Sara",
-      voucherCode: "SECOND15-222",
-      productName: "Geepas Blender",
-      warrantyDays: 365,
-      registrationId: "order-2-second15",
-      registrationDate: new Date("2026-01-01"),
-      voucherExpiryDays: 60,
-      lang: "ar",
-      shop: "test.myshopify.com",
-      rewardType: "SECOND15",
-    });
-    const second15Text = extractSentText(fetchMock);
+    expect(message.to).toBe("+9647701234567");
+    expect(message.content.templateName).toBe("voucher_code");
+    
+    const placeholders = message.content.templateData.body.placeholders;
+    expect(placeholders.length).toBe(8);
 
-    fetchMock = mockInfobipFetch();
-    vi.stubGlobal("fetch", fetchMock);
+    // Arabic portion
+    expect(placeholders[0]).toBe("Omar");
+    expect(placeholders[1]).toBe("15");
+    expect(placeholders[2]).toBe("NEXT15-333");
+    expect(placeholders[3]).toBe("45");
 
-    await sendWarrantySms({
-      phoneNumber: "07701234567",
-      customerName: "Sara",
-      voucherCode: "SECOND15-222",
-      productName: "Geepas Blender",
-      warrantyDays: 365,
-      registrationId: "order-2-next15",
-      registrationDate: new Date("2026-01-01"),
-      voucherExpiryDays: 60,
-      lang: "ar",
-      shop: "test.myshopify.com",
-      rewardType: "NEXT15",
-    });
-    const next15Text = extractSentText(fetchMock);
-
-    expect(second15Text).not.toBe(next15Text);
+    // English portion
+    expect(placeholders[4]).toBe("Omar");
+    expect(placeholders[5]).toBe("15");
+    expect(placeholders[6]).toBe("NEXT15-333");
+    expect(placeholders[7]).toBe("45");
   });
 });

@@ -272,8 +272,7 @@ export async function sendWarrantySms(
   const isVoucher =
     params.rewardType === "SECOND15" ||
     params.rewardType === "NEXT15" ||
-    params.rewardType === "WELCOME10" ||
-    params.rewardType === "WARRANTY15";
+    params.rewardType === "WELCOME10";
 
   let templateName = "warranty_registration";
   let placeholders: string[] = [];
@@ -310,16 +309,16 @@ export async function sendWarrantySms(
     const daysStr = String(params.warrantyDays);
     // 10 parameters: Arabic (1-5) then English (6-10)
     placeholders = [
-      params.customerName,   // {{1}}
-      params.productName,    // {{2}}
-      params.registrationId, // {{3}}
-      daysStr,               // {{4}}
-      dateStrAr,             // {{5}}
-      params.customerName,   // {{6}}
-      params.productName,    // {{7}}
-      params.registrationId, // {{8}}
-      daysStr,               // {{9}}
-      dateStrEn,             // {{10}}
+      params.customerName,          // {{1}}
+      params.productName,           // {{2}}
+      params.voucherCode ?? "",     // {{3}}
+      daysStr,                      // {{4}}
+      dateStrAr,                    // {{5}}
+      params.customerName,          // {{6}}
+      params.productName,           // {{7}}
+      params.voucherCode ?? "",     // {{8}}
+      daysStr,                      // {{9}}
+      dateStrEn,                    // {{10}}
     ];
   }
 

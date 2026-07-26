@@ -71,14 +71,14 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     // Arabic portion
     expect(placeholders[0]).toBe("Ali");
     expect(placeholders[1]).toBe("Geepas Blender");
-    expect(placeholders[2]).toBe("reg-1");
+    expect(placeholders[2]).toBe("WARRANTY15-111");
     expect(placeholders[3]).toBe("365");
     expect(placeholders[4]).toContain("٢٠٢٦");
 
     // English portion (duplicates)
     expect(placeholders[5]).toBe("Ali");
     expect(placeholders[6]).toBe("Geepas Blender");
-    expect(placeholders[7]).toBe("reg-1");
+    expect(placeholders[7]).toBe("WARRANTY15-111");
     expect(placeholders[8]).toBe("365");
     expect(placeholders[9]).toContain("2026");
   });

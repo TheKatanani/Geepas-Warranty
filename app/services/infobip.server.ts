@@ -15,9 +15,10 @@ function getEnv() {
     baseUrl: (process.env.INFOBIP_BASE_URL ?? "").replace(/\/$/, ""),
     whatsappSender: process.env.INFOBIP_WHATSAPP_SENDER ?? "",
     // Must exactly match the language code of the approved Meta template.
-    // "Arabic (UAE)" in Infobip/Meta portal → language code "ar"
+    // "Arabic (UAE)" in Infobip/Meta portal → language code "ar_AE"
+    // (Meta uses underscore-separated locale codes, NOT BCP-47 hyphens.)
     // Override via INFOBIP_WHATSAPP_LANG env var if needed.
-    whatsappLang: process.env.INFOBIP_WHATSAPP_LANG ?? "ar",
+    whatsappLang: process.env.INFOBIP_WHATSAPP_LANG ?? "ar_AE",
   };
 }
 
@@ -28,8 +29,8 @@ const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 // Maps every known template name to its expected placeholder count.
 // Update this whenever a new template is added or an existing one is changed.
 const TEMPLATE_REGISTRY: Record<string, { expectedParams: number; language: string }> = {
-  voucher_code:           { expectedParams: 8,  language: "ar" },
-  warranty_registration:  { expectedParams: 10, language: "ar" },
+  voucher_code:           { expectedParams: 8,  language: "ar_AE" },
+  warranty_registration:  { expectedParams: 10, language: "ar_AE" },
 };
 
 // ---- Types ----------------------------------------------------------------
@@ -176,9 +177,11 @@ async function sendWhatsAppOnce(
   };
 
   // Log full payload (no credentials — they are in headers, not body)
+  const payloadJson = JSON.stringify(payload, null, 2);
   console.log(
     `[Infobip/sendWhatsAppOnce] POST ${url} → ${phone}\n` +
-      `  template: ${templateName} | language: ${language} | params(${placeholders.length}): ${JSON.stringify(placeholders)}`
+      `  template: ${templateName} | language: ${language} | params(${placeholders.length}): ${JSON.stringify(placeholders)}\n` +
+      `  Full payload:\n${payloadJson}`
   );
 
   let timeoutHandle: ReturnType<typeof setTimeout>;
@@ -217,6 +220,19 @@ async function sendWhatsAppOnce(
   } catch (bodyErr: any) {
     return { success: false, error: `Failed to read Infobip response body: ${bodyErr?.message}` };
   }
+
+  // Log response headers for debugging (exclude auth-related headers)
+  const respHeaders: Record<string, string> = {};
+  if (response.headers?.forEach) {
+    response.headers.forEach((v: string, k: string) => {
+      if (!k.toLowerCase().includes("authorization")) respHeaders[k] = v;
+    });
+  }
+  console.log(
+    `[Infobip/sendWhatsAppOnce] Response ${response.status} for ${phone}\n` +
+      `  Headers: ${JSON.stringify(respHeaders)}\n` +
+      `  Body: ${raw}`
+  );
 
   if (!response.ok) {
     console.error(`[Infobip/sendWhatsAppOnce] HTTP ${response.status} for ${phone} — body: ${raw}`);

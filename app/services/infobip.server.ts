@@ -29,8 +29,8 @@ const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 // Maps every known template name to its expected placeholder count.
 // Update this whenever a new template is added or an existing one is changed.
 const TEMPLATE_REGISTRY: Record<string, { expectedParams: number; language: string }> = {
-  voucher_code:           { expectedParams: 8,  language: "ar_AE" },
-  warranty_registration:  { expectedParams: 10, language: "ar_AE" },
+  voucher_code:           { expectedParams: 8,  language: "ar" },      // Template language: "Arabic"
+  warranty_registration:  { expectedParams: 10, language: "ar_AE" },   // Template language: "Arabic (UAE)"
 };
 
 // ---- Types ----------------------------------------------------------------
@@ -418,11 +418,13 @@ export async function sendWarrantySms(
     ];
   }
 
+  const templateLang = TEMPLATE_REGISTRY[templateName]?.language ?? env.whatsappLang;
+
   return sendWhatsAppTemplate({
     phoneNumber: params.phoneNumber,
     templateName,
     placeholders,
-    language: env.whatsappLang,
+    language: templateLang,
     shop: params.shop,
     registrationId: isVoucher ? undefined : params.registrationId,
   });

@@ -26,19 +26,96 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const card = payload as GiftCardPayload;
 
-  // --- Extract fields ---
   const giftCardId = card.id;
   const initialValue = parseFloat(card.initial_value ?? "0");
   const currency = card.currency ?? "IQD";
-  const maskedCode = card.masked_code ?? card.code ?? `•••• •••• •••• ${card.last_characters ?? ""}`;
+  let maskedCode = card.masked_code ?? card.code ?? `•••• •••• •••• ${card.last_characters ?? ""}`;
   const amountFormatted = `${initialValue.toLocaleString()} ${currency}`;
 
   let recipientPhone = "";
   let recipientName = "Customer";
 
-  // --- Resolve Customer ---
-  // Try retrieving customer directly if customer_id exists
-  if (card.customer_id) {
+  // Query GiftCard via GraphQL to fetch lineItem -> order & lineItem.customAttributes (line item properties) and full code if available
+  try {
+    const { admin } = await unauthenticated.admin(shop);
+    const giftCardQuery = `#graphql
+      query getGiftCardDetails($id: ID!) {
+        giftCard(id: $id) {
+          id
+          code
+          maskedCode
+          lineItem {
+            id
+            customAttributes {
+              key
+              value
+            }
+            order {
+              id
+              customer {
+                firstName
+                phone
+              }
+              shippingAddress {
+                phone
+              }
+              billingAddress {
+                phone
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(giftCardQuery, {
+      variables: { id: `gid://shopify/GiftCard/${giftCardId}` },
+    });
+    const data = (await response.json()) as any;
+    const giftCard = data?.data?.giftCard;
+
+    if (giftCard) {
+      if (giftCard.code) {
+        maskedCode = giftCard.code;
+      } else if (giftCard.maskedCode) {
+        maskedCode = giftCard.maskedCode;
+      }
+
+      const lineItem = giftCard.lineItem;
+      if (lineItem) {
+        const customAttributes: Array<{ key: string; value: string }> = lineItem.customAttributes ?? [];
+        const phoneAttr = customAttributes.find(
+          (attr) => attr.key === "Recipient Phone" || attr.key === "recipient_phone"
+        );
+        const nameAttr = customAttributes.find(
+          (attr) => attr.key === "Recipient name" || attr.key === "recipient_name"
+        );
+
+        if (phoneAttr?.value) {
+          recipientPhone = phoneAttr.value;
+        }
+
+        if (nameAttr?.value) {
+          recipientName = nameAttr.value;
+        }
+
+        if (lineItem.order) {
+          const order = lineItem.order;
+          if (order.customer?.firstName && recipientName === "Customer") {
+            recipientName = order.customer.firstName;
+          }
+          if (!recipientPhone) {
+            recipientPhone = order.customer?.phone ?? order.shippingAddress?.phone ?? order.billingAddress?.phone ?? "";
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[${topic}] Failed to query gift card GraphQL details for ${giftCardId}:`, err);
+  }
+
+  // Fallback: If no phone from GraphQL lineItem, try querying customer directly if customer_id exists in webhook payload
+  if (!recipientPhone && card.customer_id) {
     try {
       const { admin } = await unauthenticated.admin(shop);
       const customerQuery = `#graphql
@@ -55,16 +132,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const data = (await response.json()) as any;
       const customer = data?.data?.customer;
       if (customer) {
-        recipientName = customer.firstName ?? "Customer";
+        if (recipientName === "Customer" && customer.firstName) {
+          recipientName = customer.firstName;
+        }
         recipientPhone = customer.phone ?? "";
-        console.log(`[${topic}] Resolved customer details from customer_id: name=${recipientName}, phone=${recipientPhone}`);
       }
     } catch (err) {
       console.error(`[${topic}] Failed to query customer by customer_id:`, err);
     }
   }
 
-  // If no customer phone, try pulling from the order if order_id exists
+  // Fallback: If still no phone, try querying order directly if order_id exists in webhook payload
   if (!recipientPhone && card.order_id) {
     try {
       const { admin } = await unauthenticated.admin(shop);
@@ -90,9 +168,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const data = (await response.json()) as any;
       const order = data?.data?.order;
       if (order) {
-        recipientName = order.customer?.firstName ?? recipientName;
+        if (recipientName === "Customer" && order.customer?.firstName) {
+          recipientName = order.customer.firstName;
+        }
         recipientPhone = order.customer?.phone ?? order.shippingAddress?.phone ?? order.billingAddress?.phone ?? "";
-        console.log(`[${topic}] Resolved customer details from order_id: name=${recipientName}, phone=${recipientPhone}`);
       }
     } catch (err) {
       console.error(`[${topic}] Failed to query order details:`, err);
@@ -100,13 +179,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (!recipientPhone) {
-    console.warn(`[${topic}] No phone number resolved for Gift Card ${giftCardId} — skipping WhatsApp send`);
+    console.warn(`[${topic}] No recipient phone number present for Gift Card ${giftCardId} — skipping WhatsApp send gracefully`);
     return new Response(null, { status: 200 });
   }
 
   const normalizedPhone = normalizePhone(recipientPhone);
   if (!normalizedPhone) {
-    console.warn(`[${topic}] Phone number "${recipientPhone}" failed E.164 normalization — skipping WhatsApp send`);
+    console.warn(`[${topic}] Recipient phone number "${recipientPhone}" failed E.164 normalization — skipping WhatsApp send gracefully`);
     return new Response(null, { status: 200 });
   }
 

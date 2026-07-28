@@ -25,7 +25,11 @@ export type OrderPayload = {
     phone?: string;
     orders_count?: number;
   };
-  line_items?: Array<{ title?: string }>;
+  line_items?: Array<{
+    title?: string;
+    is_gift_card?: boolean;
+    properties?: Array<{ name: string; value: string }>;
+  }>;
 };
 
 /** Returns the first non-empty phone found across order-level and address fields. */

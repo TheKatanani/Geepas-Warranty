@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/phone.server";
 import { issueRewardAndNotify } from "../services/reward.server";
+import { sendWhatsAppTemplate } from "../services/infobip.server";
 import prisma from "../db.server";
 import {
   resolveOrderPhone,
@@ -259,6 +260,156 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   } catch (err) {
     console.error(`[orders/paid] Error processing single-use gift cards deactivation:`, err);
+  }
+
+  // ---- Gift Card WhatsApp Notification ------------------------------------
+  // Shopify does not support a gift_cards/create webhook topic, so we detect
+  // gift card purchases here from line items and notify the recipient via WhatsApp.
+  try {
+    const giftCardLineItems = (order.line_items ?? []).filter((li) => li.is_gift_card === true);
+    if (giftCardLineItems.length > 0) {
+      console.log(`[orders/paid] Order ${orderNumber} contains ${giftCardLineItems.length} gift card line item(s) — querying issued gift cards`);
+
+      const { admin } = await unauthenticated.admin(shop);
+
+      // Query gift cards created in the last 10 minutes for this customer
+      const windowStart = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const giftCardsQuery = `#graphql
+        query getRecentGiftCards($query: String!, $first: Int!) {
+          giftCards(first: $first, query: $query) {
+            edges {
+              node {
+                id
+                code
+                maskedCode
+                initialValue {
+                  amount
+                  currencyCode
+                }
+                lineItem {
+                  id
+                  customAttributes {
+                    key
+                    value
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+      // Filter by customer and recent creation time
+      const queryStr = `customer_id:${customer.id} created_at:>=${windowStart}`;
+      const giftCardsResponse = await admin.graphql(giftCardsQuery, {
+        variables: { query: queryStr, first: 10 },
+      });
+      const giftCardsData = (await giftCardsResponse.json()) as any;
+      const giftCardEdges = giftCardsData?.data?.giftCards?.edges ?? [];
+
+      console.log(`[orders/paid] Found ${giftCardEdges.length} recently issued gift card(s) for customer ${customer.id}`);
+
+      for (const edge of giftCardEdges) {
+        const gc = edge.node;
+        const gcId = gc.id;
+        const gcCode = gc.code ?? gc.maskedCode ?? "";
+        const gcAmount = gc.initialValue?.amount ?? "0";
+        const gcCurrency = gc.initialValue?.currencyCode ?? "IQD";
+        const amountFormatted = `${parseFloat(gcAmount).toLocaleString()} ${gcCurrency}`;
+
+        // Try to get recipient phone from line item custom attributes
+        let gcRecipientPhone = "";
+        let gcRecipientName = customerName;
+        const customAttrs: Array<{ key: string; value: string }> = gc.lineItem?.customAttributes ?? [];
+        const phoneAttr = customAttrs.find(
+          (a) => a.key === "Recipient Phone" || a.key === "recipient_phone"
+        );
+        const nameAttr = customAttrs.find(
+          (a) => a.key === "Recipient name" || a.key === "recipient_name"
+        );
+        if (phoneAttr?.value) gcRecipientPhone = phoneAttr.value;
+        if (nameAttr?.value) gcRecipientName = nameAttr.value;
+
+        // Also check the REST line item properties for recipient phone (webhook payload)
+        if (!gcRecipientPhone) {
+          // Search all gift card line items in the order payload
+          for (const li of giftCardLineItems) {
+            const phoneProp = (li.properties ?? []).find(
+              (p) => p.name === "Recipient Phone" || p.name === "recipient_phone"
+            );
+            const nameProp = (li.properties ?? []).find(
+              (p) => p.name === "Recipient name" || p.name === "recipient_name"
+            );
+            if (phoneProp?.value) {
+              gcRecipientPhone = phoneProp.value;
+            }
+            if (nameProp?.value && gcRecipientName === customerName) {
+              gcRecipientName = nameProp.value;
+            }
+          }
+        }
+
+        // Fallback: use buyer's phone
+        if (!gcRecipientPhone) {
+          gcRecipientPhone = normalizedPhone;
+          gcRecipientName = customerName;
+        }
+
+        const normalizedGcPhone = normalizePhone(gcRecipientPhone);
+        if (!normalizedGcPhone) {
+          console.warn(`[orders/paid] Gift card ${gcId}: phone "${gcRecipientPhone}" failed normalization — skipping WhatsApp`);
+          continue;
+        }
+
+        // Dedupe key: one notification per gift card
+        const dedupeKey = `giftcard-wa:${gcId.split("/").pop()}`;
+        const placeholders = [
+          gcRecipientName,    // {{1}}
+          amountFormatted,    // {{2}}
+          gcCode,             // {{3}}
+          gcRecipientName,    // {{4}}
+          amountFormatted,    // {{5}}
+          gcCode,             // {{6}}
+        ];
+
+        console.log(`[orders/paid] Sending gift card WhatsApp to ${normalizedGcPhone} for card ${gcId}`);
+        const gcResult = await sendWhatsAppTemplate({
+          phoneNumber: normalizedGcPhone,
+          templateName: "gift_card_notification",
+          placeholders,
+          shop,
+          registrationId: `giftcard-${gcId.split("/").pop()}`,
+          dedupeKey,
+        });
+
+        // Log to SMSLog (upsert by dedupeKey to be idempotent on webhook retries)
+        if (!gcResult.isDuplicate) {
+          try {
+            await prisma.sMSLog.upsert({
+              where: { dedupeKey },
+              create: {
+                shop,
+                phone: normalizedGcPhone,
+                registrationId: null,
+                smsSent: gcResult.success,
+                smsSentAt: gcResult.success ? new Date(gcResult.timestamp) : null,
+                smsProviderResponse: gcResult.rawResponse ?? gcResult.error ?? null,
+                dedupeKey,
+              },
+              update: {
+                smsSent: gcResult.success,
+                smsSentAt: gcResult.success ? new Date(gcResult.timestamp) : null,
+                smsProviderResponse: gcResult.rawResponse ?? gcResult.error ?? null,
+              },
+            });
+          } catch (dbErr) {
+            console.error(`[orders/paid] Failed to write SMSLog for gift card ${gcId}:`, dbErr);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[orders/paid] Error sending gift card WhatsApp notifications:`, err);
   }
 
   return new Response(null, { status: 200 });

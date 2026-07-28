@@ -266,14 +266,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Shopify does not support a gift_cards/create webhook topic, so we detect
   // gift card purchases here from line items and notify the recipient via WhatsApp.
   try {
-    const giftCardLineItems = (order.line_items ?? []).filter((li) => li.is_gift_card === true);
-    if (giftCardLineItems.length > 0) {
-      console.log(`[orders/paid] Order ${orderNumber} contains ${giftCardLineItems.length} gift card line item(s) — querying issued gift cards`);
+    // --- DEBUG: log raw line items to understand what Shopify sends ---
+    const rawLineItems = order.line_items ?? [];
+    console.log(
+      `[giftcard-wa] DEBUG order=${orderNumber} line_items count=${rawLineItems.length}:\n` +
+      rawLineItems.map((li, i) =>
+        `  [${i}] title=${li.title ?? "(none)"} is_gift_card=${(li as any).is_gift_card} ` +
+        `gift_card=${(li as any).gift_card} product_id=${(li as any).product_id ?? "?"} ` +
+        `properties=${JSON.stringify(li.properties ?? [])}`
+      ).join("\n")
+    );
 
+    // Detect gift card line items using multiple strategies:
+    // 1. is_gift_card === true (standard field)
+    // 2. gift_card === true (alternative field name some API versions use)
+    // 3. product_type === "gift_card" (not always present in webhook)
+    const giftCardLineItems = rawLineItems.filter((li) =>
+      (li as any).is_gift_card === true ||
+      (li as any).gift_card === true
+    );
+
+    console.log(`[giftcard-wa] Detected ${giftCardLineItems.length} gift card line item(s) via is_gift_card/gift_card flag`);
+
+    // If no gift card line items detected, still try to query in case the flag
+    // is missing from the payload (Shopify sometimes omits false-y fields).
+    // We'll query the giftCards API regardless and let the result count decide.
+    const shouldQuery = giftCardLineItems.length > 0 || customer.id != null;
+
+    if (!shouldQuery) {
+      console.log(`[giftcard-wa] No customer ID available — skipping gift card query`);
+    } else {
       const { admin } = await unauthenticated.admin(shop);
 
-      // Query gift cards created in the last 10 minutes for this customer
-      const windowStart = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      // Query gift cards created in the last 15 minutes for this customer
+      const windowStart = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const queryStr = `customer_id:${customer.id} created_at:>=${windowStart}`;
+      console.log(`[giftcard-wa] Querying giftCards API — query="${queryStr}"`);
+
       const giftCardsQuery = `#graphql
         query getRecentGiftCards($query: String!, $first: Int!) {
           giftCards(first: $first, query: $query) {
@@ -299,15 +328,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       `;
 
-      // Filter by customer and recent creation time
-      const queryStr = `customer_id:${customer.id} created_at:>=${windowStart}`;
       const giftCardsResponse = await admin.graphql(giftCardsQuery, {
         variables: { query: queryStr, first: 10 },
       });
       const giftCardsData = (await giftCardsResponse.json()) as any;
-      const giftCardEdges = giftCardsData?.data?.giftCards?.edges ?? [];
 
-      console.log(`[orders/paid] Found ${giftCardEdges.length} recently issued gift card(s) for customer ${customer.id}`);
+      // Log raw GraphQL response for debugging
+      console.log(
+        `[giftcard-wa] giftCards GraphQL raw response:\n${JSON.stringify(giftCardsData, null, 2)}`
+      );
+
+      const giftCardEdges = giftCardsData?.data?.giftCards?.edges ?? [];
+      console.log(`[giftcard-wa] Found ${giftCardEdges.length} recently issued gift card(s) for customer ${customer.id}`);
+
+      // If no gift cards found and we didn't detect gift card line items, skip.
+      if (giftCardEdges.length === 0) {
+        console.log(`[giftcard-wa] No recent gift cards found for customer ${customer.id} — skipping WhatsApp notification`);
+      }
 
       for (const edge of giftCardEdges) {
         const gc = edge.node;
@@ -317,62 +354,85 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         const gcCurrency = gc.initialValue?.currencyCode ?? "IQD";
         const amountFormatted = `${parseFloat(gcAmount).toLocaleString()} ${gcCurrency}`;
 
-        // Try to get recipient phone from line item custom attributes
+        console.log(`[giftcard-wa] Processing gift card: id=${gcId} code=${gcCode} amount=${amountFormatted}`);
+
+        // --- Resolve recipient phone ---
+        // Priority 1: Recipient Phone from GraphQL lineItem.customAttributes
         let gcRecipientPhone = "";
         let gcRecipientName = customerName;
         const customAttrs: Array<{ key: string; value: string }> = gc.lineItem?.customAttributes ?? [];
+        console.log(`[giftcard-wa] Gift card ${gcId} customAttributes: ${JSON.stringify(customAttrs)}`);
+
         const phoneAttr = customAttrs.find(
           (a) => a.key === "Recipient Phone" || a.key === "recipient_phone"
         );
         const nameAttr = customAttrs.find(
           (a) => a.key === "Recipient name" || a.key === "recipient_name"
         );
-        if (phoneAttr?.value) gcRecipientPhone = phoneAttr.value;
-        if (nameAttr?.value) gcRecipientName = nameAttr.value;
+        if (phoneAttr?.value) {
+          gcRecipientPhone = phoneAttr.value;
+          console.log(`[giftcard-wa] Resolved phone from GraphQL customAttributes: ${gcRecipientPhone}`);
+        }
+        if (nameAttr?.value) {
+          gcRecipientName = nameAttr.value;
+          console.log(`[giftcard-wa] Resolved name from GraphQL customAttributes: ${gcRecipientName}`);
+        }
 
-        // Also check the REST line item properties for recipient phone (webhook payload)
+        // Priority 2: Recipient Phone from REST line item properties (webhook payload)
         if (!gcRecipientPhone) {
-          // Search all gift card line items in the order payload
-          for (const li of giftCardLineItems) {
-            const phoneProp = (li.properties ?? []).find(
+          console.log(`[giftcard-wa] No phone in GraphQL customAttributes — checking REST line item properties`);
+          for (const li of rawLineItems) {
+            const props = li.properties ?? [];
+            console.log(`[giftcard-wa]   line item "${li.title}" properties: ${JSON.stringify(props)}`);
+            const phoneProp = props.find(
               (p) => p.name === "Recipient Phone" || p.name === "recipient_phone"
             );
-            const nameProp = (li.properties ?? []).find(
+            const nameProp = props.find(
               (p) => p.name === "Recipient name" || p.name === "recipient_name"
             );
             if (phoneProp?.value) {
               gcRecipientPhone = phoneProp.value;
+              console.log(`[giftcard-wa] Resolved phone from REST line item property: ${gcRecipientPhone}`);
             }
             if (nameProp?.value && gcRecipientName === customerName) {
               gcRecipientName = nameProp.value;
+              console.log(`[giftcard-wa] Resolved name from REST line item property: ${gcRecipientName}`);
             }
           }
         }
 
-        // Fallback: use buyer's phone
+        // Priority 3: Fallback — use the buyer's own phone
         if (!gcRecipientPhone) {
           gcRecipientPhone = normalizedPhone;
           gcRecipientName = customerName;
+          console.log(`[giftcard-wa] Falling back to buyer's phone: ${gcRecipientPhone}`);
         }
 
         const normalizedGcPhone = normalizePhone(gcRecipientPhone);
+        console.log(`[giftcard-wa] normalizedGcPhone="${normalizedGcPhone ?? "(invalid)"}"`);
+
         if (!normalizedGcPhone) {
-          console.warn(`[orders/paid] Gift card ${gcId}: phone "${gcRecipientPhone}" failed normalization — skipping WhatsApp`);
+          console.warn(`[giftcard-wa] Gift card ${gcId}: phone "${gcRecipientPhone}" failed normalization — skipping WhatsApp`);
           continue;
         }
 
         // Dedupe key: one notification per gift card
         const dedupeKey = `giftcard-wa:${gcId.split("/").pop()}`;
         const placeholders = [
-          gcRecipientName,    // {{1}}
-          amountFormatted,    // {{2}}
-          gcCode,             // {{3}}
-          gcRecipientName,    // {{4}}
-          amountFormatted,    // {{5}}
-          gcCode,             // {{6}}
+          gcRecipientName,   // {{1}}
+          amountFormatted,   // {{2}}
+          gcCode,            // {{3}}
+          gcRecipientName,   // {{4}}
+          amountFormatted,   // {{5}}
+          gcCode,            // {{6}}
         ];
 
-        console.log(`[orders/paid] Sending gift card WhatsApp to ${normalizedGcPhone} for card ${gcId}`);
+        console.log(
+          `[giftcard-wa] Sending WhatsApp to ${normalizedGcPhone} — ` +
+          `template=gift_card_notification dedupeKey=${dedupeKey} ` +
+          `placeholders=${JSON.stringify(placeholders)}`
+        );
+
         const gcResult = await sendWhatsAppTemplate({
           phoneNumber: normalizedGcPhone,
           templateName: "gift_card_notification",
@@ -381,6 +441,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           registrationId: `giftcard-${gcId.split("/").pop()}`,
           dedupeKey,
         });
+
+        console.log(
+          `[giftcard-wa] sendWhatsAppTemplate result: success=${gcResult.success} ` +
+          `isDuplicate=${gcResult.isDuplicate} error=${gcResult.error ?? "(none)"} ` +
+          `messageId=${gcResult.messageId ?? "(none)"}`
+        );
 
         // Log to SMSLog (upsert by dedupeKey to be idempotent on webhook retries)
         if (!gcResult.isDuplicate) {
@@ -403,13 +469,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               },
             });
           } catch (dbErr) {
-            console.error(`[orders/paid] Failed to write SMSLog for gift card ${gcId}:`, dbErr);
+            console.error(`[giftcard-wa] Failed to write SMSLog for gift card ${gcId}:`, dbErr);
           }
         }
       }
     }
   } catch (err) {
-    console.error(`[orders/paid] Error sending gift card WhatsApp notifications:`, err);
+    console.error(`[giftcard-wa] Unhandled error in gift card WhatsApp notification block:`, err);
   }
 
   return new Response(null, { status: 200 });

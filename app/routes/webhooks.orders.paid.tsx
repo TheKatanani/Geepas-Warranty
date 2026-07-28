@@ -315,13 +315,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                   amount
                   currencyCode
                 }
-                lineItem {
-                  id
-                  customAttributes {
-                    key
-                    value
-                  }
-                }
               }
             }
           }
@@ -357,51 +350,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.log(`[giftcard-wa] Processing gift card: id=${gcId} code=${gcCode} amount=${amountFormatted}`);
 
         // --- Resolve recipient phone ---
-        // Priority 1: Recipient Phone from GraphQL lineItem.customAttributes
         let gcRecipientPhone = "";
         let gcRecipientName = customerName;
-        const customAttrs: Array<{ key: string; value: string }> = gc.lineItem?.customAttributes ?? [];
-        console.log(`[giftcard-wa] Gift card ${gcId} customAttributes: ${JSON.stringify(customAttrs)}`);
 
-        const phoneAttr = customAttrs.find(
-          (a) => a.key === "Recipient Phone" || a.key === "recipient_phone"
-        );
-        const nameAttr = customAttrs.find(
-          (a) => a.key === "Recipient name" || a.key === "recipient_name"
-        );
-        if (phoneAttr?.value) {
-          gcRecipientPhone = phoneAttr.value;
-          console.log(`[giftcard-wa] Resolved phone from GraphQL customAttributes: ${gcRecipientPhone}`);
-        }
-        if (nameAttr?.value) {
-          gcRecipientName = nameAttr.value;
-          console.log(`[giftcard-wa] Resolved name from GraphQL customAttributes: ${gcRecipientName}`);
-        }
-
-        // Priority 2: Recipient Phone from REST line item properties (webhook payload)
-        if (!gcRecipientPhone) {
-          console.log(`[giftcard-wa] No phone in GraphQL customAttributes — checking REST line item properties`);
-          for (const li of rawLineItems) {
-            const props = li.properties ?? [];
-            console.log(`[giftcard-wa]   line item "${li.title}" properties: ${JSON.stringify(props)}`);
-            const phoneProp = props.find(
-              (p) => p.name === "Recipient Phone" || p.name === "recipient_phone"
-            );
-            const nameProp = props.find(
-              (p) => p.name === "Recipient name" || p.name === "recipient_name"
-            );
-            if (phoneProp?.value) {
-              gcRecipientPhone = phoneProp.value;
-              console.log(`[giftcard-wa] Resolved phone from REST line item property: ${gcRecipientPhone}`);
-            }
-            if (nameProp?.value && gcRecipientName === customerName) {
-              gcRecipientName = nameProp.value;
-              console.log(`[giftcard-wa] Resolved name from REST line item property: ${gcRecipientName}`);
-            }
+        // Priority 1: Check REST line item properties (webhook payload)
+        for (const li of rawLineItems) {
+          const props = li.properties ?? [];
+          console.log(`[giftcard-wa] line item "${li.title}" properties: ${JSON.stringify(props)}`);
+          const phoneProp = props.find(
+            (p) => p.name === "Recipient Phone" || p.name === "recipient_phone"
+          );
+          const nameProp = props.find(
+            (p) => p.name === "Recipient name" || p.name === "recipient_name"
+          );
+          if (phoneProp?.value) {
+            gcRecipientPhone = phoneProp.value;
+            console.log(`[giftcard-wa] Resolved phone from REST line item property: ${gcRecipientPhone}`);
+          }
+          if (nameProp?.value) {
+            gcRecipientName = nameProp.value;
+            console.log(`[giftcard-wa] Resolved name from REST line item property: ${gcRecipientName}`);
           }
         }
 
-        // Priority 3: Fallback — use the buyer's own phone
+        // Priority 2: Fallback — use the buyer's own phone
         if (!gcRecipientPhone) {
           gcRecipientPhone = normalizedPhone;
           gcRecipientName = customerName;

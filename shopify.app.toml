@@ -26,10 +26,6 @@ api_version = "2026-07"
   topics = [ "orders/paid" ]
 
   [[webhooks.subscriptions]]
-  uri = "/webhooks/gift_cards/create"
-  topics = [ "gift_cards/create" ]
-
-  [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 

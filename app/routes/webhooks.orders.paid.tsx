@@ -309,8 +309,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             edges {
               node {
                 id
-                code
                 maskedCode
+                lastCharacters
                 initialValue {
                   amount
                   currencyCode
@@ -349,7 +349,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       for (const edge of giftCardEdges) {
         const gc = edge.node;
         const gcId = gc.id;
-        const gcCode = gc.code ?? gc.maskedCode ?? "";
+        const gcCode = gc.maskedCode ?? (gc.lastCharacters ? `••••${gc.lastCharacters}` : "");
         const gcAmount = gc.initialValue?.amount ?? "0";
         const gcCurrency = gc.initialValue?.currencyCode ?? "IQD";
         const amountFormatted = `${parseFloat(gcAmount).toLocaleString()} ${gcCurrency}`;

@@ -198,16 +198,30 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     for (const tx of transactions) {
       let giftCardId: string | null = null;
       
-      // Parse receiptJson if present
-      if (tx.receiptJson) {
-        try {
-          const receipt = JSON.parse(tx.receiptJson);
-          if (receipt.gift_card_id) {
-            giftCardId = `gid://shopify/GiftCard/${receipt.gift_card_id}`;
+      if (tx.gateway === "gift_card" || tx.gateway?.toLowerCase().includes("gift_card")) {
+        // Parse receiptJson if present
+        if (tx.receiptJson) {
+          try {
+            const receipt = typeof tx.receiptJson === "string" ? JSON.parse(tx.receiptJson) : tx.receiptJson;
+            const rawId = receipt.gift_card_id ?? receipt.giftCardId ?? receipt.id;
+            if (rawId) {
+              giftCardId = String(rawId).startsWith("gid://") ? String(rawId) : `gid://shopify/GiftCard/${rawId}`;
+            }
+          } catch (e) {
+            // Ignore parse errors
           }
-        } catch (e) {
-          // Ignore parse errors
         }
+      }
+      
+      // Fallback check if receiptJson contained gift_card_id directly
+      if (!giftCardId && tx.receiptJson) {
+        try {
+          const receipt = typeof tx.receiptJson === "string" ? JSON.parse(tx.receiptJson) : tx.receiptJson;
+          const rawId = receipt.gift_card_id ?? receipt.giftCardId;
+          if (rawId) {
+            giftCardId = String(rawId).startsWith("gid://") ? String(rawId) : `gid://shopify/GiftCard/${rawId}`;
+          }
+        } catch (e) {}
       }
       
       // If we identified a used gift card, deactivate it immediately

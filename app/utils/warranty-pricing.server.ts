@@ -11,14 +11,19 @@ export const WARRANTY_SURCHARGE_MULTIPLIER = 1.15;
 /**
  * Calculates the static price for the 3-Year Extended Warranty variant.
  * Formula: Math.round(basePrice * 1.15)
- * IQD pricing is represented as whole numbers.
+ *
+ * Uses scaled integer arithmetic (fils/cents x100) to eliminate IEEE 754
+ * floating-point drift on .5 boundary values (e.g. 3250 * 1.15 = 3737.5
+ * which JS floats represent as 3737.4999999999995 causing Math.round to return 3737).
  */
 export function calculateWarrantyPrice(basePrice: number | string): number {
   const numericBasePrice = typeof basePrice === "string" ? parseFloat(basePrice) : basePrice;
   if (isNaN(numericBasePrice) || numericBasePrice <= 0) {
     return 0;
   }
-  return Math.round(numericBasePrice * WARRANTY_SURCHARGE_MULTIPLIER);
+  // Convert to integer units (x100) to avoid float representation errors on half-integer boundaries
+  const integerBase = Math.round(numericBasePrice * 100);
+  return Math.round((integerBase * 115) / 10000);
 }
 
 /**

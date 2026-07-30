@@ -177,15 +177,10 @@ async function sendWhatsAppOnce(
   };
 
   const activeMediaUrl = mediaUrl || process.env.INFOBIP_GIFT_CARD_MEDIA_URL;
-  if (activeMediaUrl || templateName === "gift_card_notification") {
-    const finalMediaUrl =
-      activeMediaUrl ||
-      process.env.INFOBIP_GIFT_CARD_MEDIA_URL ||
-      "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg";
-
+  if (activeMediaUrl) {
     templateData.header = {
       type: "IMAGE",
-      mediaUrl: finalMediaUrl,
+      mediaUrl: activeMediaUrl,
     };
   }
 

@@ -163,7 +163,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     await sendWhatsAppTemplate({
       phoneNumber: "07701234567",
       templateName: "gift_card_notification",
-      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
+      placeholders: ["Recipient", "50,000 IQD", "****-1234"],
       language: "ar",
     });
 

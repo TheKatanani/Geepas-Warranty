@@ -298,9 +298,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } else {
       const { admin } = await unauthenticated.admin(shop);
 
-      // Query gift cards created in the last 15 minutes for this customer
-      const windowStart = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const queryStr = `customer_id:${customer.id} created_at:>=${windowStart}`;
+      // Query gift cards created in the last 15 minutes for this customer.
+      // The datetime value MUST be quoted in Shopify's search syntax —
+      // unquoted ISO timestamps break because colons in "18:04:48" are
+      // treated as field separators, making the filter effectively ignored.
+      const windowStart = new Date(Date.now() - 15 * 60 * 1000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, "Z"); // strip milliseconds (e.g. ".757Z" → "Z")
+      const queryStr = `customer_id:${customer.id} created_at:>="${windowStart}"`;
       console.log(`[giftcard-wa] Querying giftCards API — query="${queryStr}"`);
 
       const giftCardsQuery = `#graphql

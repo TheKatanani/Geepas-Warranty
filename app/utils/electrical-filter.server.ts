@@ -1,6 +1,6 @@
 /**
  * Helper to determine if a product is an Electrical / Electronic appliance
- * vs non-electrical items (hand tools, utensils, cookware, accessories).
+ * vs non-electrical items (hand tools, utensils, cookware, accessories, car items).
  */
 export function isElectricalProduct(product: {
   productType?: string;
@@ -11,20 +11,22 @@ export function isElectricalProduct(product: {
   const type = (product.productType || "").toLowerCase();
   const tags = (product.tags || []).map((t) => t.toLowerCase());
 
-  // Non-electrical exclusions (override matching keywords like "ironing board" or "oven mitt")
-  const nonElectricalExceptions = [
-    "ironing board", "oven mitt", "glass container", "airtight container",
-    "bamboo", "nylon", "silicone spoon", "silicone rice spoon", "scouring pad",
-    "hacksaw", "spanner", "hammer", "plier", "knife", "blade", "tape", "screw driver",
-    "screwdriver", "wrench", "saw", "socket", "key tag", "glue stick", "cookware",
-    "casserole", "frypan", "fry pan", "wok", "saucepan", "loaf pan", "round pan",
-    "turner", "grater", "spoon", "ladle", "peeler", "bin", "dustbin", "mop", "wiper",
-    "gloves", "apron", "airer", "hanger", "gift card"
+  // Strict non-electrical exclusions (never electrical)
+  const strictNonElectrical = [
+    "sunshade", "bamboo", "hacksaw", "spanner", "hammer", "plier", "knife",
+    "blade", "tape", "screw driver", "screwdriver", "wrench", "saw", "socket",
+    "key tag", "glue stick", "cookware", "casserole", "frypan", "fry pan", "wok",
+    "saucepan", "loaf pan", "round pan", "turner", "grater", "spoon", "ladle",
+    "peeler", "bin", "dustbin", "mop", "wiper", "gloves", "apron", "airer",
+    "hanger", "container", "gift card", "scouring pad", "ironing board", "oven mitt",
+    "adapter", "adaptor", "lock", "booster kit", "caulking gun", "mat", "door mat",
+    "towel", "cloth", "rack", "holder", "dispenser bottle", "coffee warmer", "tea warmer",
+    "warmer"
   ];
 
-  if (nonElectricalExceptions.some((exc) => title.includes(exc))) {
-    // Re-verify if it's actually an electrical item like "glue gun" or "electric kettle"
-    if (title.includes("vacuum cleaner") || title.includes("blender") || title.includes("electric kettle") || title.includes("clipper") || title.includes("trimmer") || title.includes("grooming")) {
+  if (strictNonElectrical.some((keyword) => title.includes(keyword))) {
+    // Re-verify if it's an actual powered electrical appliance like "glue gun" or "electric kettle"
+    if (title.includes("vacuum cleaner") || title.includes("blender") || title.includes("electric kettle") || title.includes("clipper") || title.includes("trimmer") || title.includes("shaver") || title.includes("wax warmer") || title.includes("towel warmer")) {
       return true;
     }
     return false;
@@ -38,12 +40,14 @@ export function isElectricalProduct(product: {
     return true;
   }
 
-  // Title keywords for electrical / electronic products
+  // Electrical appliance title keywords
   const electricalTitleKeywords = [
-    "vacuum cleaner", "blender", "kettle", "clipper", "trimmer", "grooming",
-    "personal scale", "soundbar", "speaker", "steam iron", "dry iron", "microwave",
-    "air fryer", "juicer", "toaster", "grill", "cooker", "heater", "fan", "hair dryer",
-    "food processor", "chopper", "coffee maker", "water dispenser"
+    "vacuum", "cleaner", "blender", "kettle", "clipper", "trimmer", "grooming",
+    "scale", "soundbar", "speaker", "iron", "microwave", "oven",
+    "air fryer", "fryer", "juicer", "toaster", "grill", "cooker", "heater", "fan",
+    "hair", "dryer", "styler", "straightener", "food processor", "chopper",
+    "coffee maker", "coffee machine", "espresso", "grinder", "water dispenser", "steamer",
+    "hob", "fridge", "refrigerator"
   ];
 
   return electricalTitleKeywords.some((k) => title.includes(k));

@@ -181,7 +181,7 @@ async function sendWhatsAppOnce(
     const finalMediaUrl =
       activeMediaUrl ||
       process.env.INFOBIP_GIFT_CARD_MEDIA_URL ||
-      "https://geepas.com.iq/cdn/shop/files/geepas-logo.png";
+      "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg";
 
     templateData.header = {
       type: "IMAGE",

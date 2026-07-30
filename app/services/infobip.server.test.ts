@@ -156,4 +156,25 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     expect(placeholders[6]).toBe("NEXT15-333");
     expect(placeholders[7]).toBe("45");
   });
+
+  it("includes IMAGE header with valid mediaUrl for gift_card_notification media template", async () => {
+    const { sendWhatsAppTemplate } = await import("./infobip.server");
+
+    await sendWhatsAppTemplate({
+      phoneNumber: "07701234567",
+      templateName: "gift_card_notification",
+      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
+      language: "ar",
+    });
+
+    const payload = extractSentPayload(fetchMock);
+    const message = payload.messages[0];
+
+    expect(message.to).toBe("+9647701234567");
+    expect(message.content.templateName).toBe("gift_card_notification");
+    expect(message.content.templateData.header).toEqual({
+      type: "IMAGE",
+      mediaUrl: "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg",
+    });
+  });
 });

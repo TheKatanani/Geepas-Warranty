@@ -4,7 +4,7 @@
  */
 
 export const WARRANTY_OPTION_NAME = "Warranty";
-export const BASE_WARRANTY_VALUE = "1 Year (Standard)";
+export const BASE_WARRANTY_VALUE = "2 Years(Free)";
 export const EXTENDED_WARRANTY_VALUE = "3 Years";
 export const WARRANTY_SURCHARGE_MULTIPLIER = 1.15;
 

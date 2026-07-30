@@ -49,9 +49,9 @@ describe("webhooks.products.update", () => {
       variants: [
         {
           id: 201,
-          title: "1 Year (Standard)",
+          title: "2 Years(Free)",
           price: "50000.00",
-          option1: "1 Year (Standard)",
+          option1: "2 Years(Free)",
         },
         {
           id: 202,
@@ -86,9 +86,9 @@ describe("webhooks.products.update", () => {
       variants: [
         {
           id: 201,
-          title: "1 Year (Standard)",
+          title: "2 Years(Free)",
           price: "45000.00",
-          option1: "1 Year (Standard)",
+          option1: "2 Years(Free)",
         },
         {
           id: 202,
@@ -113,10 +113,10 @@ describe("webhooks.products.update", () => {
       variants: [
         {
           id: 301,
-          title: "Red / 1 Year (Standard)",
+          title: "Red / 2 Years(Free)",
           price: "100000.00",
           option1: "Red",
-          option2: "1 Year (Standard)",
+          option2: "2 Years(Free)",
         },
         {
           id: 302,

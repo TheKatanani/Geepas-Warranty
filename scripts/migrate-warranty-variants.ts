@@ -6,10 +6,10 @@
  *   - "3 Years"           -> Extended variant (price = Math.round(basePrice * 1.15), tracked: false)
  *
  * Usage:
- *   pnpm migrate-variants [--dry-run] [--limit=5] [--shop=store.myshopify.com]
- *   (or: pnpm tsx --env-file=.env scripts/migrate-warranty-variants.ts --dry-run)
+ *   pnpm migrate-variants [--dry-run] [--limit=5] [--shop=store.myshopify.com] [--token=shpat_...]
  */
 
+import { PrismaClient } from "@prisma/client";
 import { unauthenticated } from "../app/shopify.server";
 import {
   BASE_WARRANTY_VALUE,
@@ -18,6 +18,11 @@ import {
   calculateWarrantyPrice,
   shouldUpdateWarrantyPrice,
 } from "../app/utils/warranty-pricing.server";
+import { isElectricalProduct } from "../app/utils/electrical-filter.server";
+
+const prisma = new PrismaClient({
+  datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } },
+});
 
 // ---------------------------------------------------------------------------
 // CLI Argument Parsing
@@ -81,9 +86,98 @@ const GET_PRODUCTS_QUERY = `#graphql
     }
   }`;
 
+const PRODUCT_OPTION_UPDATE_MUTATION = `#graphql
+  mutation productOptionUpdate($productId: ID!, $option: OptionUpdateInput!, $optionValuesToUpdate: [OptionValueUpdateInput!], $optionValuesToAdd: [OptionValueCreateInput!]) {
+    productOptionUpdate(productId: $productId, option: $option, optionValuesToUpdate: $optionValuesToUpdate, optionValuesToAdd: $optionValuesToAdd) {
+      userErrors {
+        field
+        message
+      }
+      product {
+        id
+        options {
+          id
+          name
+          position
+          optionValues {
+            id
+            name
+          }
+        }
+        variants(first: 100) {
+          nodes {
+            id
+            title
+            sku
+            price
+            selectedOptions {
+              name
+              value
+            }
+            inventoryItem {
+              tracked
+            }
+          }
+        }
+      }
+    }
+  }`;
+
+const PRODUCT_OPTION_CREATE_MUTATION = `#graphql
+  mutation productOptionsCreate($productId: ID!, $options: [OptionCreateInput!]!) {
+    productOptionsCreate(productId: $productId, options: $options) {
+      userErrors {
+        field
+        message
+      }
+      product {
+        id
+        options {
+          id
+          name
+          position
+          optionValues {
+            id
+            name
+          }
+        }
+        variants(first: 100) {
+          nodes {
+            id
+            title
+            sku
+            price
+            selectedOptions {
+              name
+              value
+            }
+            inventoryItem {
+              tracked
+            }
+          }
+        }
+      }
+    }
+  }`;
+
 const PRODUCT_VARIANTS_BULK_UPDATE_MUTATION = `#graphql
   mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
     productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+      productVariants {
+        id
+        title
+        price
+      }
+      userErrors {
+        field
+        message
+      }
+    }
+  }`;
+
+const PRODUCT_VARIANTS_BULK_CREATE_MUTATION = `#graphql
+  mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkCreate(productId: $productId, variants: $variants) {
       productVariants {
         id
         title
@@ -122,13 +216,19 @@ interface ProductNode {
 }
 
 async function processProduct(admin: any, product: ProductNode) {
-  const variants = product.variants?.nodes || [];
+  let variants = product.variants?.nodes || [];
+  let options = product.options || [];
+
+  if (!isElectricalProduct(product)) {
+    console.log(`[Skip Non-Electrical] "${product.title}" is not an electrical appliance.`);
+    return;
+  }
+
   if (variants.length === 0) {
     console.log(`[Skip] Product "${product.title}" (${product.id}) has no variants.`);
     return;
   }
 
-  // Find 1-Year (base) variant and 3-Year variant
   const baseVariant =
     variants.find((v) =>
       v.selectedOptions.some(
@@ -144,56 +244,175 @@ async function processProduct(admin: any, product: ProductNode) {
 
   const expected3YrPrice = calculateWarrantyPrice(basePrice);
 
-  const existing3YrVariant = variants.find((v) =>
+  let warrantyOption = options.find(
+    (o) => o.name.toLowerCase() === WARRANTY_OPTION_NAME.toLowerCase(),
+  );
+
+  if (warrantyOption) {
+    const legacyVal = warrantyOption.optionValues?.find(
+      (val) => val.name === "1 Year (Standard)" || (val.name.includes("1 Year") && !val.name.includes("3")),
+    );
+    if (legacyVal) {
+      console.log(`[Option Rename] "${product.title}" — Renaming option value "${legacyVal.name}" -> "${BASE_WARRANTY_VALUE}"`);
+      if (!IS_DRY_RUN) {
+        const updateRes = await admin.graphql(PRODUCT_OPTION_UPDATE_MUTATION, {
+          variables: {
+            productId: product.id,
+            option: { id: warrantyOption.id, name: WARRANTY_OPTION_NAME },
+            optionValuesToUpdate: [{ id: legacyVal.id, name: BASE_WARRANTY_VALUE }],
+          },
+        });
+        const updateData = await updateRes.json();
+        const updatedProd = updateData?.data?.productOptionUpdate?.product;
+        if (updatedProd) {
+          options = updatedProd.options || options;
+          variants = updatedProd.variants?.nodes || variants;
+          warrantyOption = options.find((o) => o.name.toLowerCase() === WARRANTY_OPTION_NAME.toLowerCase());
+        }
+      }
+    }
+  }
+
+  if (!warrantyOption) {
+    const titleOption = options.find((o) => o.name.toLowerCase() === "title");
+
+    if (titleOption) {
+      console.log(`[Option Update] "${product.title}" — Updating option "Title" -> "Warranty" and adding "3 Years"`);
+      if (IS_DRY_RUN) {
+        console.log(`  [Dry Run] Would call productOptionUpdate for "${product.title}"`);
+        return;
+      }
+
+      const defaultVal = titleOption.optionValues?.find((v) => v.name === "Default Title") || titleOption.optionValues?.[0];
+
+      const updateRes = await admin.graphql(PRODUCT_OPTION_UPDATE_MUTATION, {
+        variables: {
+          productId: product.id,
+          option: { id: titleOption.id, name: WARRANTY_OPTION_NAME },
+          optionValuesToUpdate: defaultVal ? [{ id: defaultVal.id, name: BASE_WARRANTY_VALUE }] : [],
+          optionValuesToAdd: [{ name: EXTENDED_WARRANTY_VALUE }],
+        },
+      });
+
+      const updateData = await updateRes.json();
+      const updateErrors = updateData?.data?.productOptionUpdate?.userErrors || [];
+      if (updateErrors.length > 0) {
+        console.error(`  [Error] productOptionUpdate failed for "${product.title}":`, updateErrors);
+        return;
+      }
+
+      const updatedProd = updateData?.data?.productOptionUpdate?.product;
+      if (updatedProd) {
+        options = updatedProd.options || options;
+        variants = updatedProd.variants?.nodes || variants;
+        warrantyOption = options.find((o) => o.name.toLowerCase() === WARRANTY_OPTION_NAME.toLowerCase());
+      }
+    } else {
+      console.log(`[Option Create] "${product.title}" — Creating Warranty option for multi-option product`);
+      if (IS_DRY_RUN) {
+        console.log(`  [Dry Run] Would call productOptionCreate for "${product.title}"`);
+        return;
+      }
+
+      const createRes = await admin.graphql(PRODUCT_OPTION_CREATE_MUTATION, {
+        variables: {
+          productId: product.id,
+          options: [
+            {
+              name: WARRANTY_OPTION_NAME,
+              values: [{ name: BASE_WARRANTY_VALUE }, { name: EXTENDED_WARRANTY_VALUE }],
+            },
+          ],
+        },
+      });
+
+      const createData = await createRes.json();
+      const createErrors = createData?.data?.productOptionsCreate?.userErrors || [];
+      if (createErrors.length > 0) {
+        console.error(`  [Error] productOptionsCreate failed for "${product.title}":`, createErrors);
+        return;
+      }
+
+      const updatedProd = createData?.data?.productOptionsCreate?.product;
+      if (updatedProd) {
+        options = updatedProd.options || options;
+        variants = updatedProd.variants?.nodes || variants;
+        warrantyOption = options.find((o) => o.name.toLowerCase() === WARRANTY_OPTION_NAME.toLowerCase());
+      }
+    }
+  }
+
+  // Check 3-Year variant(s)
+  const existing3YrVariants = variants.filter((v) =>
     v.selectedOptions.some(
       (opt) => opt.name === WARRANTY_OPTION_NAME && opt.value === EXTENDED_WARRANTY_VALUE,
     ),
   );
 
-  if (existing3YrVariant) {
-    const needsUpdate = shouldUpdateWarrantyPrice(basePrice, existing3YrVariant.price);
+  if (existing3YrVariants.length > 0) {
+    for (const v3yr of existing3YrVariants) {
+      const needsUpdate = shouldUpdateWarrantyPrice(basePrice, v3yr.price);
+      if (!needsUpdate) {
+        console.log(`[OK] "${product.title}" — 3-Year variant ${v3yr.id} synced at ${v3yr.price} IQD`);
+        continue;
+      }
 
-    if (!needsUpdate) {
-      console.log(
-        `[OK] "${product.title}" — 3-Year variant ${existing3YrVariant.id} already synced at ${existing3YrVariant.price} IQD`,
-      );
-      return;
+      console.log(`[Update Price] "${product.title}" — 3-Year variant price from ${v3yr.price} to ${expected3YrPrice} IQD`);
+      if (IS_DRY_RUN) continue;
+
+      const res = await admin.graphql(PRODUCT_VARIANTS_BULK_UPDATE_MUTATION, {
+        variables: {
+          productId: product.id,
+          variants: [
+            {
+              id: v3yr.id,
+              price: expected3YrPrice.toString(),
+              inventoryItem: { tracked: false },
+            },
+          ],
+        },
+      });
+
+      const data = await res.json();
+      const errors = data?.data?.productVariantsBulkUpdate?.userErrors || [];
+      if (errors.length > 0) {
+        console.error(`  [Error] productVariantsBulkUpdate failed for "${product.title}":`, errors);
+      } else {
+        console.log(`  [Success] Updated 3-Year variant for "${product.title}" to ${expected3YrPrice} IQD`);
+      }
     }
-
-    console.log(
-      `[Update Needed] "${product.title}" — Updating 3-Year variant from ${existing3YrVariant.price} to ${expected3YrPrice} IQD (Base: ${basePrice})`,
+  } else if (warrantyOption) {
+    const threeYearValObj = warrantyOption.optionValues?.find(
+      (val) => val.name === EXTENDED_WARRANTY_VALUE,
     );
 
-    if (IS_DRY_RUN) {
-      console.log(`  [Dry Run] Would call productVariantsBulkUpdate for ${existing3YrVariant.id}`);
-      return;
-    }
+    if (threeYearValObj) {
+      console.log(`[Create Variant] "${product.title}" — Creating 3-Year variant at ${expected3YrPrice} IQD`);
+      if (IS_DRY_RUN) return;
 
-    const res = await admin.graphql(PRODUCT_VARIANTS_BULK_UPDATE_MUTATION, {
-      variables: {
-        productId: product.id,
-        variants: [
-          {
-            id: existing3YrVariant.id,
-            price: expected3YrPrice.toString(),
-            inventoryItem: { tracked: false },
-          },
-        ],
-      },
-    });
+      const createVarRes = await admin.graphql(PRODUCT_VARIANTS_BULK_CREATE_MUTATION, {
+        variables: {
+          productId: product.id,
+          variants: [
+            {
+              optionValues: [
+                { optionId: warrantyOption.id, id: threeYearValObj.id },
+              ],
+              price: expected3YrPrice.toString(),
+              inventoryItem: { tracked: false },
+            },
+          ],
+        },
+      });
 
-    const data = await res.json();
-    const errors = data?.data?.productVariantsBulkUpdate?.userErrors || [];
-    if (errors.length > 0) {
-      console.error(`  [Error] Failed to update 3-Year variant for "${product.title}":`, errors);
-    } else {
-      console.log(`  [Success] Updated 3-Year variant for "${product.title}" to ${expected3YrPrice} IQD`);
+      const createVarData = await createVarRes.json();
+      const createVarErrors = createVarData?.data?.productVariantsBulkCreate?.userErrors || [];
+      if (createVarErrors.length > 0) {
+        console.error(`  [Error] productVariantsBulkCreate failed for "${product.title}":`, createVarErrors);
+      } else {
+        console.log(`  [Success] Created 3-Year variant for "${product.title}" at ${expected3YrPrice} IQD`);
+      }
     }
-  } else {
-    // If 3-Year variant doesn't exist, log info
-    console.log(
-      `[Notice] Product "${product.title}" base price is ${basePrice} IQD. Target 3-Year price: ${expected3YrPrice} IQD.`,
-    );
   }
 }
 
@@ -207,21 +426,44 @@ async function main() {
     process.exit(1);
   }
 
+  const cleanShop = shopParam.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
   console.log(`\n==================================================`);
   console.log(` Starting Warranty Variant Migration / Sync`);
-  console.log(` Shop    : ${shopParam}`);
+  console.log(` Shop    : ${cleanShop}`);
   console.log(` Dry Run : ${IS_DRY_RUN}`);
   console.log(` Limit   : ${limitParam > 0 ? limitParam : "All products"}`);
   console.log(`==================================================\n`);
 
-  const { admin } = await unauthenticated.admin(shopParam);
+  let admin: any;
+
+  const tokenArg = args.find((a) => a.startsWith("--token="));
+  const cliToken = tokenArg ? tokenArg.split("=")[1] : (process.env.SHOPIFY_ADMIN_API_ACCESS_TOKEN || "");
+
+  let dbToken = "";
+  if (!cliToken) {
+    try {
+      const dbSession = await prisma.session.findFirst({
+        where: { shop: { contains: cleanShop } },
+        orderBy: { expires: "desc" },
+      });
+      if (dbSession?.accessToken) {
+        dbToken = dbSession.accessToken;
+      }
+    } catch (err: any) {
+      console.warn(`[Auth Warning] DB query failed (${err.message}).`);
+    }
+  }
+
+  const unauth = await unauthenticated.admin(cleanShop);
+  admin = unauth.admin;
 
   let hasNextPage = true;
   let cursor: string | null = null;
   let processedCount = 0;
 
   while (hasNextPage) {
-    const fetchSize = limitParam > 0 && limitParam - processedCount < 50 ? limitParam - processedCount : 50;
+    const fetchSize = limitParam > 0 && limitParam - processedCount < 20 ? limitParam - processedCount : 20;
 
     const response: any = await admin.graphql(GET_PRODUCTS_QUERY, {
       variables: {

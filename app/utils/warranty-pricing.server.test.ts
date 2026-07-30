@@ -12,7 +12,7 @@ describe("Warranty Pricing Utility (Phase 3 & Float Rounding Fix)", () => {
   describe("Constants", () => {
     it("has correct warranty option configuration", () => {
       expect(WARRANTY_OPTION_NAME).toBe("Warranty");
-      expect(BASE_WARRANTY_VALUE).toBe("1 Year (Standard)");
+      expect(BASE_WARRANTY_VALUE).toBe("2 Years(Free)");
       expect(EXTENDED_WARRANTY_VALUE).toBe("3 Years");
       expect(WARRANTY_SURCHARGE_MULTIPLIER).toBe(1.15);
     });

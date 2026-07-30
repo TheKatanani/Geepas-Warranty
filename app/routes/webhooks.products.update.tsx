@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
+import { isElectricalProduct } from "../utils/electrical-filter.server";
 import {
   BASE_WARRANTY_VALUE,
   EXTENDED_WARRANTY_VALUE,
@@ -41,6 +42,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response("Invalid payload", { status: 200 });
   }
 
+  // Filter out non-electrical products (hand tools, cookware, accessories)
+  if (!isElectricalProduct({ title: payload.title, productType: payload.product_type, tags: payload.tags })) {
+    return new Response(null, { status: 200 });
+  }
+
   const productId = formatGid("Product", payload.id);
   const variants: any[] = payload.variants || [];
 
@@ -67,9 +73,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(null, { status: 200 });
   }
 
-  // Find Base ("1 Year (Standard)" or primary) variant
+  // Find Base ("2 Years(Free)" / "1 Year (Standard)" or primary) variant
   const baseVariant =
     variants.find((v) => matchesOptionValue(v, BASE_WARRANTY_VALUE)) ||
+    variants.find((v) => matchesOptionValue(v, "1 Year (Standard)")) ||
     variants.find((v) => v.id !== extended3YrVariant.id) ||
     variants[0];
 

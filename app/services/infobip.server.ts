@@ -61,10 +61,11 @@ export interface InfobipSmsResult {
 }
 
 export interface WhatsAppTemplateParams {
-  phoneNumber: string;
+  phoneNumber: string;       // raw input — will be normalised to E.164
   templateName: string;
   placeholders: string[];
   language?: string;
+  mediaUrl?: string;          // Optional image/media header for MEDIA_TEMPLATE templates
   shop?: string;
   registrationId?: string;
   dedupeKey?: string;
@@ -100,33 +101,19 @@ function validateTemplate(
   language: string,
   placeholders: string[]
 ): string | null {
-  const meta = TEMPLATE_REGISTRY[templateName];
-
-  if (!meta) {
-    return `Unknown template "${templateName}". Add it to TEMPLATE_REGISTRY before sending.`;
-  }
-
-  if (language !== meta.language) {
-    return (
-      `Language mismatch for template "${templateName}": ` +
-      `API is sending "${language}" but the approved template uses "${meta.language}". ` +
-      `Update INFOBIP_WHATSAPP_LANG or the template registry.`
-    );
-  }
-
-  if (placeholders.length !== meta.expectedParams) {
-    return (
-      `Parameter count mismatch for template "${templateName}": ` +
-      `expected ${meta.expectedParams} placeholders, got ${placeholders.length}.`
-    );
-  }
-
-  const emptyIdx = placeholders.findIndex((p) => p === "" || p === "-");
-  if (emptyIdx !== -1) {
-    // Non-fatal warning — safe defaults were applied, but log it clearly.
+  const reg = TEMPLATE_REGISTRY[templateName];
+  if (!reg) {
+    // Unknown template — warn but allow send so newly created templates work without code changes
     console.warn(
-      `[Infobip/validate] Template "${templateName}" placeholder {{${emptyIdx + 1}}} ` +
-        `is using a fallback value. Original value was null/empty.`
+      `[Infobip/validateTemplate] Template "${templateName}" is not in local TEMPLATE_REGISTRY (proceeding with send).`
+    );
+    return null;
+  }
+
+  if (placeholders.length !== reg.expectedParams) {
+    return (
+      `Template "${templateName}" expects ${reg.expectedParams} placeholders ` +
+      `but received ${placeholders.length}: ${JSON.stringify(placeholders)}`
     );
   }
 
@@ -139,7 +126,8 @@ async function sendWhatsAppOnce(
   phone: string,
   templateName: string,
   placeholders: string[],
-  language: string
+  language: string,
+  mediaUrl?: string
 ): Promise<{ success: boolean; messageId?: string; error?: string; rawResponse?: string }> {
   const env = getEnv();
 
@@ -159,6 +147,25 @@ async function sendWhatsAppOnce(
 
   const url = `${env.baseUrl}/whatsapp/1/message/template`;
 
+  const templateData: any = {
+    body: {
+      placeholders,
+    },
+  };
+
+  const activeMediaUrl = mediaUrl || process.env.INFOBIP_GIFT_CARD_MEDIA_URL;
+  if (activeMediaUrl || templateName === "gift_card_notification") {
+    const finalMediaUrl =
+      activeMediaUrl ||
+      process.env.INFOBIP_GIFT_CARD_MEDIA_URL ||
+      "https://geepas.com.iq/cdn/shop/files/geepas-logo.png";
+
+    templateData.header = {
+      type: "IMAGE",
+      mediaUrl: finalMediaUrl,
+    };
+  }
+
   const payload = {
     messages: [
       {
@@ -166,11 +173,7 @@ async function sendWhatsAppOnce(
         to: phone,
         content: {
           templateName,
-          templateData: {
-            body: {
-              placeholders,
-            },
-          },
+          templateData,
           language,
         },
       },
@@ -335,7 +338,7 @@ export async function sendWhatsAppTemplate(
   // Sanitize all placeholders before sending
   const safePlaceholders = params.placeholders.map((p) => safeValue(p));
 
-  const result = await sendWhatsAppOnce(phone, params.templateName, safePlaceholders, language);
+  const result = await sendWhatsAppOnce(phone, params.templateName, safePlaceholders, language, params.mediaUrl);
 
   if (result.success) {
     console.log(`[Infobip/WhatsApp] ✓ Sent to ${phone}, messageId=${result.messageId}`);

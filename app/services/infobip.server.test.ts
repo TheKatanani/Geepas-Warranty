@@ -157,13 +157,13 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     expect(placeholders[7]).toBe("45");
   });
 
-  it("sends gift_card_notification with 3 placeholders and language ar", async () => {
+  it("sends gift_card_notification with 6 placeholders and language ar", async () => {
     const { sendWhatsAppTemplate } = await import("./infobip.server");
 
     await sendWhatsAppTemplate({
       phoneNumber: "07701234567",
       templateName: "gift_card_notification",
-      placeholders: ["Recipient", "50,000 IQD", "****-1234"],
+      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
       language: "ar",
     });
 
@@ -172,7 +172,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
 
     expect(message.to).toBe("+9647701234567");
     expect(message.content.templateName).toBe("gift_card_notification");
-    expect(message.content.templateData.body.placeholders).toEqual(["Recipient", "50,000 IQD", "****-1234"]);
+    expect(message.content.templateData.body.placeholders).toEqual(["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"]);
     expect(message.content.templateData.header).toBeUndefined();
   });
 
@@ -182,7 +182,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     await sendWhatsAppTemplate({
       phoneNumber: "07701234567",
       templateName: "gift_card_notification",
-      placeholders: ["Recipient", "50,000 IQD", "****-1234"],
+      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
       mediaUrl: "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg",
       language: "ar",
     });

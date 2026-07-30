@@ -394,6 +394,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           gcRecipientName,   // {{1}}
           amountFormatted,   // {{2}}
           gcCode,            // {{3}}
+          gcRecipientName,   // {{4}}
+          amountFormatted,   // {{5}}
+          gcCode,            // {{6}}
         ];
 
         console.log(

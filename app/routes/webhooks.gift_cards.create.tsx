@@ -195,6 +195,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     recipientName,    // {{1}}
     amountFormatted,  // {{2}}
     maskedCode,       // {{3}}
+    recipientName,    // {{4}}
+    amountFormatted,  // {{5}}
+    maskedCode,       // {{6}}
   ];
 
   console.log(`[${topic}] Sending Gift Card WhatsApp to ${normalizedPhone} code=${maskedCode}`);

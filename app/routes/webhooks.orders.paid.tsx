@@ -406,13 +406,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         console.log(
           `[giftcard-wa] Sending WhatsApp to ${normalizedGcPhone} — ` +
-          `template=gift_card_notification dedupeKey=${dedupeKey} ` +
+          `template=gift_card_notification_v2 dedupeKey=${dedupeKey} ` +
           `placeholders=${JSON.stringify(placeholders)}`
         );
 
         const gcResult = await sendWhatsAppTemplate({
           phoneNumber: normalizedGcPhone,
-          templateName: "gift_card_notification",
+          templateName: "gift_card_notification_v2",
           placeholders,
           language: "ar",
           shop,

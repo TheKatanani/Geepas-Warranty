@@ -34,7 +34,7 @@ const TEMPLATE_REGISTRY: Record<
 > = {
   voucher_code: { expectedParams: 8, language: "ar" }, // Template language: "Arabic"
   warranty_registration: { expectedParams: 10, language: "ar_AE" }, // Template language: "Arabic (UAE)"
-  gift_card_notification: { expectedParams: 6, language: "ar" }, // Template language: "Arabic"
+  gift_card_notification_v2: { expectedParams: 6, language: "ar" }, // Template language: "Arabic"
 };
 
 // ---- Types ----------------------------------------------------------------

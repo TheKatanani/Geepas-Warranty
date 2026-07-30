@@ -77,7 +77,7 @@ describe('GIFT_CARDS_CREATE webhook handler', () => {
     expect(sendWhatsAppMock).toHaveBeenCalledTimes(1);
     expect(sendWhatsAppMock).toHaveBeenCalledWith({
       phoneNumber: '+9647701234567',
-      templateName: 'gift_card_notification',
+      templateName: 'gift_card_notification_v2',
       placeholders: [
         'Ahmad',
         '50,000 IQD',

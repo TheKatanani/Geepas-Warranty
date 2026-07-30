@@ -190,7 +190,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // --- Send WhatsApp message ---
-  const templateName = "gift_card_notification";
+  const templateName = "gift_card_notification_v2";
   const placeholders = [
     recipientName,    // {{1}}
     amountFormatted,  // {{2}}

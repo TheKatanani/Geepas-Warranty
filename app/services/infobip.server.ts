@@ -31,7 +31,7 @@ const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 const TEMPLATE_REGISTRY: Record<string, { expectedParams: number; language: string }> = {
   voucher_code:           { expectedParams: 8,  language: "ar" },      // Template language: "Arabic"
   warranty_registration:  { expectedParams: 10, language: "ar_AE" },   // Template language: "Arabic (UAE)"
-  gift_card_notification: { expectedParams: 6,  language: "ar_AE" },   // Template language: "Arabic (UAE)"
+  gift_card_notification: { expectedParams: 6,  language: "ar" },      // Template language: "Arabic"
 };
 
 // ---- Types ----------------------------------------------------------------
@@ -158,7 +158,7 @@ async function sendWhatsAppOnce(
     const finalMediaUrl =
       activeMediaUrl ||
       process.env.INFOBIP_GIFT_CARD_MEDIA_URL ||
-      "https://geepas.com.iq/cdn/shop/files/geepas-logo.png";
+      "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg?v=1693751983";
 
     templateData.header = {
       type: "IMAGE",

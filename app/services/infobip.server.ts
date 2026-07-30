@@ -28,16 +28,19 @@ const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 // ---- Template registry -------------------------------------------------------
 // Maps every known template name to its expected placeholder count.
 // Update this whenever a new template is added or an existing one is changed.
-const TEMPLATE_REGISTRY: Record<string, { expectedParams: number; language: string }> = {
-  voucher_code:           { expectedParams: 8,  language: "ar" },      // Template language: "Arabic"
-  warranty_registration:  { expectedParams: 10, language: "ar_AE" },   // Template language: "Arabic (UAE)"
-  gift_card_notification: { expectedParams: 6,  language: "ar" },      // Template language: "Arabic"
+const TEMPLATE_REGISTRY: Record<
+  string,
+  { expectedParams: number; language: string }
+> = {
+  voucher_code: { expectedParams: 8, language: "ar" }, // Template language: "Arabic"
+  warranty_registration: { expectedParams: 10, language: "ar_AE" }, // Template language: "Arabic (UAE)"
+  gift_card_notification: { expectedParams: 6, language: "ar" }, // Template language: "Arabic"
 };
 
 // ---- Types ----------------------------------------------------------------
 
 export interface InfobipSmsParams {
-  phoneNumber: string;       // raw input — will be normalised to E.164
+  phoneNumber: string; // raw input — will be normalised to E.164
   customerName: string;
   voucherCode: string | null;
   productName: string;
@@ -45,27 +48,27 @@ export interface InfobipSmsParams {
   registrationId: string;
   registrationDate: Date;
   voucherExpiryDays?: number; // defaults to 30
-  lang?: "ar" | "en";        // kept for compatibility
-  shop?: string;             // required for DB dedup check
-  rewardType?: string;       // "SECOND15" | "NEXT15" | "WARRANTY..."
+  lang?: "ar" | "en"; // kept for compatibility
+  shop?: string; // required for DB dedup check
+  rewardType?: string; // "SECOND15" | "NEXT15" | "WARRANTY..."
   discountPercentage?: number; // optional, will be parsed from rewardType if missing
 }
 
 export interface InfobipSmsResult {
   success: boolean;
   messageId?: string;
-  phone: string;             // normalised E.164
-  timestamp: string;         // ISO-8601
+  phone: string; // normalised E.164
+  timestamp: string; // ISO-8601
   error?: string;
   rawResponse?: string;
 }
 
 export interface WhatsAppTemplateParams {
-  phoneNumber: string;       // raw input — will be normalised to E.164
+  phoneNumber: string; // raw input — will be normalised to E.164
   templateName: string;
   placeholders: string[];
   language?: string;
-  mediaUrl?: string;          // Optional image/media header for MEDIA_TEMPLATE templates
+  mediaUrl?: string; // Optional image/media header for MEDIA_TEMPLATE templates
   shop?: string;
   registrationId?: string;
   dedupeKey?: string;
@@ -84,7 +87,10 @@ function safeValue(value: unknown, fallback = "-"): string {
 }
 
 // ---- Helper: extract discount percentage ----
-function extractDiscountPercentage(rewardType?: string, passedPct?: number): number {
+function extractDiscountPercentage(
+  rewardType?: string,
+  passedPct?: number,
+): number {
   if (passedPct !== undefined && passedPct !== null) return passedPct;
   if (!rewardType) return 15; // default fallback
   const match = rewardType.match(/\d+/);
@@ -99,13 +105,13 @@ function extractDiscountPercentage(rewardType?: string, passedPct?: number): num
 function validateTemplate(
   templateName: string,
   language: string,
-  placeholders: string[]
+  placeholders: string[],
 ): string | null {
   const reg = TEMPLATE_REGISTRY[templateName];
   if (!reg) {
     // Unknown template — warn but allow send so newly created templates work without code changes
     console.warn(
-      `[Infobip/validateTemplate] Template "${templateName}" is not in local TEMPLATE_REGISTRY (proceeding with send).`
+      `[Infobip/validateTemplate] Template "${templateName}" is not in local TEMPLATE_REGISTRY (proceeding with send).`,
     );
     return null;
   }
@@ -127,22 +133,39 @@ async function sendWhatsAppOnce(
   templateName: string,
   placeholders: string[],
   language: string,
-  mediaUrl?: string
-): Promise<{ success: boolean; messageId?: string; error?: string; rawResponse?: string }> {
+  mediaUrl?: string,
+): Promise<{
+  success: boolean;
+  messageId?: string;
+  error?: string;
+  rawResponse?: string;
+}> {
   const env = getEnv();
 
   if (!env.apiKey || !env.baseUrl) {
-    return { success: false, error: "Infobip credentials not configured (check env vars)." };
+    return {
+      success: false,
+      error: "Infobip credentials not configured (check env vars).",
+    };
   }
   if (!env.whatsappSender) {
     return { success: false, error: "INFOBIP_WHATSAPP_SENDER not configured." };
   }
 
   // Pre-send validation
-  const validationError = validateTemplate(templateName, language, placeholders);
+  const validationError = validateTemplate(
+    templateName,
+    language,
+    placeholders,
+  );
   if (validationError) {
-    console.error(`[Infobip/sendWhatsAppOnce] Validation failed — ${validationError}`);
-    return { success: false, error: `Template validation failed: ${validationError}` };
+    console.error(
+      `[Infobip/sendWhatsAppOnce] Validation failed — ${validationError}`,
+    );
+    return {
+      success: false,
+      error: `Template validation failed: ${validationError}`,
+    };
   }
 
   const url = `${env.baseUrl}/whatsapp/1/message/template`;
@@ -158,7 +181,7 @@ async function sendWhatsAppOnce(
     const finalMediaUrl =
       activeMediaUrl ||
       process.env.INFOBIP_GIFT_CARD_MEDIA_URL ||
-      "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg?v=1693751983";
+      "https://geepas.com.iq/cdn/shop/files/geepas-logo.png";
 
     templateData.header = {
       type: "IMAGE",
@@ -185,7 +208,7 @@ async function sendWhatsAppOnce(
   console.log(
     `[Infobip/sendWhatsAppOnce] POST ${url} → ${phone}\n` +
       `  template: ${templateName} | language: ${language} | params(${placeholders.length}): ${JSON.stringify(placeholders)}\n` +
-      `  Full payload:\n${payloadJson}`
+      `  Full payload:\n${payloadJson}`,
   );
 
   let timeoutHandle: ReturnType<typeof setTimeout>;
@@ -212,9 +235,10 @@ async function sendWhatsAppOnce(
     clearTimeout(timeoutHandle!);
     return {
       success: false,
-      error: err?.message === "TIMEOUT"
-        ? "Infobip timed out after 8s"
-        : `Network error: ${err?.message ?? String(err)}`,
+      error:
+        err?.message === "TIMEOUT"
+          ? "Infobip timed out after 8s"
+          : `Network error: ${err?.message ?? String(err)}`,
     };
   }
 
@@ -222,7 +246,10 @@ async function sendWhatsAppOnce(
   try {
     raw = await response.text();
   } catch (bodyErr: any) {
-    return { success: false, error: `Failed to read Infobip response body: ${bodyErr?.message}` };
+    return {
+      success: false,
+      error: `Failed to read Infobip response body: ${bodyErr?.message}`,
+    };
   }
 
   // Log response headers for debugging (exclude auth-related headers)
@@ -235,11 +262,13 @@ async function sendWhatsAppOnce(
   console.log(
     `[Infobip/sendWhatsAppOnce] Response ${response.status} for ${phone}\n` +
       `  Headers: ${JSON.stringify(respHeaders)}\n` +
-      `  Body: ${raw}`
+      `  Body: ${raw}`,
   );
 
   if (!response.ok) {
-    console.error(`[Infobip/sendWhatsAppOnce] HTTP ${response.status} for ${phone} — body: ${raw}`);
+    console.error(
+      `[Infobip/sendWhatsAppOnce] HTTP ${response.status} for ${phone} — body: ${raw}`,
+    );
     return {
       success: false,
       error: `Infobip HTTP ${response.status}`,
@@ -251,7 +280,11 @@ async function sendWhatsAppOnce(
   try {
     data = JSON.parse(raw);
   } catch {
-    return { success: false, error: "Invalid JSON from Infobip", rawResponse: raw };
+    return {
+      success: false,
+      error: "Invalid JSON from Infobip",
+      rawResponse: raw,
+    };
   }
 
   const msg = data?.messages?.[0];
@@ -261,8 +294,11 @@ async function sendWhatsAppOnce(
     return { success: true, messageId: msg.messageId, rawResponse: raw };
   }
 
-  const errDesc = msg?.status?.description ?? `Unexpected Infobip status: ${status}`;
-  console.error(`[Infobip/sendWhatsAppOnce] Non-success status for ${phone} — ${errDesc} — body: ${raw}`);
+  const errDesc =
+    msg?.status?.description ?? `Unexpected Infobip status: ${status}`;
+  console.error(
+    `[Infobip/sendWhatsAppOnce] Non-success status for ${phone} — ${errDesc} — body: ${raw}`,
+  );
   return {
     success: false,
     error: errDesc,
@@ -277,7 +313,7 @@ async function sendWhatsAppOnce(
  * Includes validation, normalization, and DB-backed deduplication.
  */
 export async function sendWhatsAppTemplate(
-  params: WhatsAppTemplateParams
+  params: WhatsAppTemplateParams,
 ): Promise<InfobipSmsResult & { isDuplicate?: boolean }> {
   const timestamp = new Date().toISOString();
   const phone = normalizePhone(params.phoneNumber);
@@ -304,10 +340,19 @@ export async function sendWhatsAppTemplate(
       if (existing && existing.smsSent) {
         const msg = `Duplicate suppressed via dedupeKey: "${params.dedupeKey}"`;
         console.warn(`[Infobip/WhatsApp] ${msg}`);
-        return { success: false, isDuplicate: true, phone, timestamp, error: msg };
+        return {
+          success: false,
+          isDuplicate: true,
+          phone,
+          timestamp,
+          error: msg,
+        };
       }
     } catch (dedupErr) {
-      console.warn(`[Infobip/WhatsApp] DedupeKey DB check failed (proceeding):`, dedupErr);
+      console.warn(
+        `[Infobip/WhatsApp] DedupeKey DB check failed (proceeding):`,
+        dedupErr,
+      );
     }
   } else {
     try {
@@ -321,14 +366,25 @@ export async function sendWhatsAppTemplate(
         orderBy: { smsSentAt: "desc" },
       });
       if (recent) {
-        const agoSec = Math.round((Date.now() - recent.smsSentAt!.getTime()) / 1000);
+        const agoSec = Math.round(
+          (Date.now() - recent.smsSentAt!.getTime()) / 1000,
+        );
         const waitSec = Math.ceil((DEDUP_WINDOW_MS - agoSec * 1000) / 1000);
         const msg = `Duplicate suppressed — already sent to ${phone} ${agoSec}s ago (${waitSec}s remaining in window)`;
         console.warn(`[Infobip/WhatsApp] ${msg}`);
-        return { success: false, isDuplicate: true, phone, timestamp, error: msg };
+        return {
+          success: false,
+          isDuplicate: true,
+          phone,
+          timestamp,
+          error: msg,
+        };
       }
     } catch (dedupErr) {
-      console.warn(`[Infobip/WhatsApp] Dedup DB check failed (proceeding):`, dedupErr);
+      console.warn(
+        `[Infobip/WhatsApp] Dedup DB check failed (proceeding):`,
+        dedupErr,
+      );
     }
   }
 
@@ -338,10 +394,18 @@ export async function sendWhatsAppTemplate(
   // Sanitize all placeholders before sending
   const safePlaceholders = params.placeholders.map((p) => safeValue(p));
 
-  const result = await sendWhatsAppOnce(phone, params.templateName, safePlaceholders, language, params.mediaUrl);
+  const result = await sendWhatsAppOnce(
+    phone,
+    params.templateName,
+    safePlaceholders,
+    language,
+    params.mediaUrl,
+  );
 
   if (result.success) {
-    console.log(`[Infobip/WhatsApp] ✓ Sent to ${phone}, messageId=${result.messageId}`);
+    console.log(
+      `[Infobip/WhatsApp] ✓ Sent to ${phone}, messageId=${result.messageId}`,
+    );
     return {
       success: true,
       messageId: result.messageId,
@@ -365,7 +429,7 @@ export async function sendWhatsAppTemplate(
  * Backwards compatibility wrapper mapping the old sendWarrantySms parameters to the WhatsApp templates.
  */
 export async function sendWarrantySms(
-  params: InfobipSmsParams
+  params: InfobipSmsParams,
 ): Promise<InfobipSmsResult & { isDuplicate?: boolean }> {
   const env = getEnv();
   // Determine if it is a discount voucher or a warranty confirmation
@@ -378,19 +442,24 @@ export async function sendWarrantySms(
   let placeholders: string[] = [];
 
   if (isVoucher) {
-    const pct = String(extractDiscountPercentage(params.rewardType ?? undefined, params.discountPercentage));
+    const pct = String(
+      extractDiscountPercentage(
+        params.rewardType ?? undefined,
+        params.discountPercentage,
+      ),
+    );
     const expiry = String(params.voucherExpiryDays ?? 30);
     templateName = "voucher_code";
     // 8 parameters: Arabic (1-4) then English (5-8)
     placeholders = [
-      safeValue(params.customerName),   // {{1}}
-      safeValue(pct),                   // {{2}}
-      safeValue(params.voucherCode),    // {{3}}
-      safeValue(expiry),                // {{4}}
-      safeValue(params.customerName),   // {{5}}
-      safeValue(pct),                   // {{6}}
-      safeValue(params.voucherCode),    // {{7}}
-      safeValue(expiry),                // {{8}}
+      safeValue(params.customerName), // {{1}}
+      safeValue(pct), // {{2}}
+      safeValue(params.voucherCode), // {{3}}
+      safeValue(expiry), // {{4}}
+      safeValue(params.customerName), // {{5}}
+      safeValue(pct), // {{6}}
+      safeValue(params.voucherCode), // {{7}}
+      safeValue(expiry), // {{8}}
     ];
   } else {
     // Format registration date in bilingual format
@@ -409,20 +478,21 @@ export async function sendWarrantySms(
     const daysStr = String(params.warrantyDays);
     // 10 parameters: Arabic (1-5) then English (6-10)
     placeholders = [
-      safeValue(params.customerName),   // {{1}}
-      safeValue(params.productName),    // {{2}}
-      safeValue(params.voucherCode),    // {{3}} — discount code issued with warranty
-      safeValue(daysStr),               // {{4}}
-      safeValue(dateStrAr),             // {{5}}
-      safeValue(params.customerName),   // {{6}}
-      safeValue(params.productName),    // {{7}}
-      safeValue(params.voucherCode),    // {{8}} — discount code (English side)
-      safeValue(daysStr),               // {{9}}
-      safeValue(dateStrEn),             // {{10}}
+      safeValue(params.customerName), // {{1}}
+      safeValue(params.productName), // {{2}}
+      safeValue(params.voucherCode), // {{3}} — discount code issued with warranty
+      safeValue(daysStr), // {{4}}
+      safeValue(dateStrAr), // {{5}}
+      safeValue(params.customerName), // {{6}}
+      safeValue(params.productName), // {{7}}
+      safeValue(params.voucherCode), // {{8}} — discount code (English side)
+      safeValue(daysStr), // {{9}}
+      safeValue(dateStrEn), // {{10}}
     ];
   }
 
-  const templateLang = TEMPLATE_REGISTRY[templateName]?.language ?? env.whatsappLang;
+  const templateLang =
+    TEMPLATE_REGISTRY[templateName]?.language ?? env.whatsappLang;
 
   return sendWhatsAppTemplate({
     phoneNumber: params.phoneNumber,

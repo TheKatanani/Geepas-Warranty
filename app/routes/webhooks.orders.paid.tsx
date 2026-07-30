@@ -409,6 +409,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           phoneNumber: normalizedGcPhone,
           templateName: "gift_card_notification",
           placeholders,
+          language: "ar",
           shop,
           registrationId: `giftcard-${gcId.split("/").pop()}`,
           dedupeKey,

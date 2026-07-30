@@ -82,7 +82,7 @@ export interface WhatsAppTemplateParams {
  */
 function safeValue(value: unknown, fallback = "-"): string {
   if (value === null || value === undefined) return fallback;
-  const str = String(value).trim();
+  const str = String(value).replace(/•/g, "*").trim();
   return str === "" ? fallback : str;
 }
 
@@ -389,7 +389,10 @@ export async function sendWhatsAppTemplate(
   }
 
   const env = getEnv();
-  const language = params.language ?? env.whatsappLang;
+  const language =
+    params.language ??
+    TEMPLATE_REGISTRY[params.templateName]?.language ??
+    env.whatsappLang;
 
   // Sanitize all placeholders before sending
   const safePlaceholders = params.placeholders.map((p) => safeValue(p));

@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { Mock } from 'vitest';
 
 vi.mock('../shopify.server', () => ({
@@ -86,6 +86,7 @@ describe('GIFT_CARDS_CREATE webhook handler', () => {
         '50,000 IQD',
         'GIFT-1234-5678',
       ],
+      language: 'ar',
       shop: 'test.myshopify.com',
       registrationId: 'giftcard-100',
     });

@@ -205,6 +205,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     phoneNumber: normalizedPhone,
     templateName,
     placeholders,
+    language: "ar",
     shop,
     registrationId: `giftcard-${giftCardId}`,
   });

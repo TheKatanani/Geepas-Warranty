@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate, unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/phone.server";
-import { sendWhatsAppTemplate } from "../services/infobip.server";
+import { sendGiftCardWhatsApp } from "../services/infobip.server";
 import prisma from "../db.server";
 
 interface GiftCardPayload {
@@ -29,7 +29,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const giftCardId = card.id;
   const initialValue = parseFloat(card.initial_value ?? "0");
   const currency = card.currency ?? "IQD";
-  let maskedCode = card.masked_code ?? card.code ?? `•••• •••• •••• ${card.last_characters ?? ""}`;
+  let maskedCode =
+    card.masked_code ??
+    card.code ??
+    `•••• •••• •••• ${card.last_characters ?? ""}`;
   const amountFormatted = `${initialValue.toLocaleString()} ${currency}`;
 
   let recipientPhone = "";
@@ -83,12 +86,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const lineItem = giftCard.lineItem;
       if (lineItem) {
-        const customAttributes: Array<{ key: string; value: string }> = lineItem.customAttributes ?? [];
+        const customAttributes: Array<{ key: string; value: string }> =
+          lineItem.customAttributes ?? [];
         const phoneAttr = customAttributes.find(
-          (attr) => attr.key === "Recipient Phone" || attr.key === "recipient_phone"
+          (attr) =>
+            attr.key === "Recipient Phone" || attr.key === "recipient_phone",
         );
         const nameAttr = customAttributes.find(
-          (attr) => attr.key === "Recipient name" || attr.key === "recipient_name"
+          (attr) =>
+            attr.key === "Recipient name" || attr.key === "recipient_name",
         );
 
         if (phoneAttr?.value) {
@@ -105,13 +111,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             recipientName = order.customer.firstName;
           }
           if (!recipientPhone) {
-            recipientPhone = order.customer?.phone ?? order.shippingAddress?.phone ?? order.billingAddress?.phone ?? "";
+            recipientPhone =
+              order.customer?.phone ??
+              order.shippingAddress?.phone ??
+              order.billingAddress?.phone ??
+              "";
           }
         }
       }
     }
   } catch (err) {
-    console.error(`[${topic}] Failed to query gift card GraphQL details for ${giftCardId}:`, err);
+    console.error(
+      `[${topic}] Failed to query gift card GraphQL details for ${giftCardId}:`,
+      err,
+    );
   }
 
   // Fallback: If no phone from GraphQL lineItem, try querying customer directly if customer_id exists in webhook payload
@@ -171,7 +184,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (recipientName === "Customer" && order.customer?.firstName) {
           recipientName = order.customer.firstName;
         }
-        recipientPhone = order.customer?.phone ?? order.shippingAddress?.phone ?? order.billingAddress?.phone ?? "";
+        recipientPhone =
+          order.customer?.phone ??
+          order.shippingAddress?.phone ??
+          order.billingAddress?.phone ??
+          "";
       }
     } catch (err) {
       console.error(`[${topic}] Failed to query order details:`, err);
@@ -179,35 +196,31 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   if (!recipientPhone) {
-    console.warn(`[${topic}] No recipient phone number present for Gift Card ${giftCardId} — skipping WhatsApp send gracefully`);
+    console.warn(
+      `[${topic}] No recipient phone number present for Gift Card ${giftCardId} — skipping WhatsApp send gracefully`,
+    );
     return new Response(null, { status: 200 });
   }
 
   const normalizedPhone = normalizePhone(recipientPhone);
   if (!normalizedPhone) {
-    console.warn(`[${topic}] Recipient phone number "${recipientPhone}" failed E.164 normalization — skipping WhatsApp send gracefully`);
+    console.warn(
+      `[${topic}] Recipient phone number "${recipientPhone}" failed E.164 normalization — skipping WhatsApp send gracefully`,
+    );
     return new Response(null, { status: 200 });
   }
 
   // --- Send WhatsApp message ---
-  const templateName = "gift_card_notification_v2";
-  const placeholders = [
-    recipientName,    // {{1}}
-    amountFormatted,  // {{2}}
-    maskedCode,       // {{3}}
-    recipientName,    // {{4}}
-    amountFormatted,  // {{5}}
-    maskedCode,       // {{6}}
-  ];
-
-  console.log(`[${topic}] Sending Gift Card WhatsApp to ${normalizedPhone} code=${maskedCode}`);
-  const result = await sendWhatsAppTemplate({
+  console.log(
+    `[${topic}] Sending Gift Card WhatsApp to ${normalizedPhone} code=${maskedCode}`,
+  );
+  const result = await sendGiftCardWhatsApp({
     phoneNumber: normalizedPhone,
-    templateName,
-    placeholders,
-    language: "ar",
+    recipientName,
+    amountFormatted,
+    maskedCode,
     shop,
-    registrationId: `giftcard-${giftCardId}`,
+    giftCardId: String(giftCardId),
   });
 
   // --- Log to SMSLog ---
@@ -223,7 +236,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
   } catch (dbErr) {
-    console.error(`[${topic}] Failed to write SMSLog for gift card notification:`, dbErr);
+    console.error(
+      `[${topic}] Failed to write SMSLog for gift card notification:`,
+      dbErr,
+    );
   }
 
   return new Response(null, { status: 200 });

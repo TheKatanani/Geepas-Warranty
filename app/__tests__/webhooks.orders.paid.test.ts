@@ -51,7 +51,7 @@ function buildOrder(overrides: Record<string, any> = {}) {
 function runAction(order: Record<string, any>, shop = "test.myshopify.com") {
   webhookMock.mockResolvedValue({ shop, payload: order, topic: "ORDERS_PAID" });
   return action({
-    request: new Request("https://example.com/webhooks/orders/paid", { method: "POST" }),
+    request: new Request("http://localhost/webhooks/orders/paid", { method: "POST" }),
   } as any);
 }
 

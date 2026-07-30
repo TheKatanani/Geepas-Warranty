@@ -64,10 +64,10 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
 
     expect(message.to).toBe("+9647701234567");
     expect(message.content.templateName).toBe("warranty_registration");
-    
+
     const placeholders = message.content.templateData.body.placeholders;
     expect(placeholders.length).toBe(10);
-    
+
     // Arabic portion
     expect(placeholders[0]).toBe("Ali");
     expect(placeholders[1]).toBe("Geepas Blender");
@@ -103,7 +103,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
 
     expect(message.to).toBe("+9647701234567");
     expect(message.content.templateName).toBe("voucher_code");
-    
+
     const placeholders = message.content.templateData.body.placeholders;
     expect(placeholders.length).toBe(8);
 
@@ -140,7 +140,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
 
     expect(message.to).toBe("+9647701234567");
     expect(message.content.templateName).toBe("voucher_code");
-    
+
     const placeholders = message.content.templateData.body.placeholders;
     expect(placeholders.length).toBe(8);
 
@@ -157,42 +157,31 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     expect(placeholders[7]).toBe("45");
   });
 
-  it("sends gift_card_notification_v2 with 6 placeholders and language ar", async () => {
-    const { sendWhatsAppTemplate } = await import("./infobip.server");
+  it("sends gift card notification with 6 placeholders and language ar via sendGiftCardWhatsApp", async () => {
+    const { sendGiftCardWhatsApp } = await import("./infobip.server");
 
-    await sendWhatsAppTemplate({
+    await sendGiftCardWhatsApp({
       phoneNumber: "07701234567",
-      templateName: "gift_card_notification_v2",
-      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
-      language: "ar",
+      recipientName: "Recipient",
+      amountFormatted: "50,000 IQD",
+      maskedCode: "****-1234",
+      shop: "test.myshopify.com",
+      giftCardId: "100",
     });
 
     const payload = extractSentPayload(fetchMock);
     const message = payload.messages[0];
 
     expect(message.to).toBe("+9647701234567");
-    expect(message.content.templateName).toBe("gift_card_notification_v2");
-    expect(message.content.templateData.body.placeholders).toEqual(["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"]);
+    expect(message.content.templateName).toBe("gift_card_notification");
+    expect(message.content.templateData.body.placeholders).toEqual([
+      "Recipient",
+      "50,000 IQD",
+      "****-1234",
+      "Recipient",
+      "50,000 IQD",
+      "****-1234",
+    ]);
     expect(message.content.templateData.header).toBeUndefined();
-  });
-
-  it("includes IMAGE header when mediaUrl is explicitly passed", async () => {
-    const { sendWhatsAppTemplate } = await import("./infobip.server");
-
-    await sendWhatsAppTemplate({
-      phoneNumber: "07701234567",
-      templateName: "gift_card_notification_v2",
-      placeholders: ["Recipient", "50,000 IQD", "****-1234", "Recipient", "50,000 IQD", "****-1234"],
-      mediaUrl: "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg",
-      language: "ar",
-    });
-
-    const payload = extractSentPayload(fetchMock);
-    const message = payload.messages[0];
-
-    expect(message.content.templateData.header).toEqual({
-      type: "IMAGE",
-      mediaUrl: "https://cdn.shopify.com/s/files/1/0820/2226/9219/files/21.jpg",
-    });
   });
 });

@@ -34,7 +34,7 @@ const TEMPLATE_REGISTRY: Record<
 > = {
   voucher_code: { expectedParams: 8, language: "ar" }, // Template language: "Arabic"
   warranty_registration: { expectedParams: 10, language: "ar_AE" }, // Template language: "Arabic (UAE)"
-  gift_card_notification: { expectedParams: 6, language: "ar" }, // Template language: "Arabic"
+  gift_card_notification_v3: { expectedParams: 6, language: "ar" }, // Template language: "Arabic"
 };
 
 // ---- Types ----------------------------------------------------------------
@@ -176,11 +176,12 @@ async function sendWhatsAppOnce(
     },
   };
 
-  // gift_card_notification is approved as Type: TEXT with Header: null.
+  // gift_card_notification_v3 is approved as Type: TEXT with Header: null.
   // We must not attach a header image parameter for it under any circumstance.
-  const activeMediaUrl = templateName === "gift_card_notification"
-    ? undefined
-    : (mediaUrl || process.env.INFOBIP_GIFT_CARD_MEDIA_URL);
+  const activeMediaUrl =
+    templateName === "gift_card_notification_v3"
+      ? undefined
+      : mediaUrl || process.env.INFOBIP_GIFT_CARD_MEDIA_URL;
 
   if (activeMediaUrl) {
     templateData.header = {
@@ -522,7 +523,7 @@ export interface GiftCardWhatsAppParams {
  * Logic is centralized here just like warranty/voucher notifications.
  */
 export async function sendGiftCardWhatsApp(
-  params: GiftCardWhatsAppParams
+  params: GiftCardWhatsAppParams,
 ): Promise<InfobipSmsResult & { isDuplicate?: boolean }> {
   // Extract clean numeric ID for registrationId and dedupeKey
   const cleanId = params.giftCardId.includes("/")
@@ -532,17 +533,17 @@ export async function sendGiftCardWhatsApp(
   const dedupeKey = params.dedupeKey ?? `giftcard-wa:${cleanId}`;
 
   const placeholders = [
-    params.recipientName,    // {{1}}
-    params.amountFormatted,  // {{2}}
-    params.maskedCode,       // {{3}}
-    params.recipientName,    // {{4}}
-    params.amountFormatted,  // {{5}}
-    params.maskedCode,       // {{6}}
+    params.recipientName, // {{1}}
+    params.amountFormatted, // {{2}}
+    params.maskedCode, // {{3}}
+    params.recipientName, // {{4}}
+    params.amountFormatted, // {{5}}
+    params.maskedCode, // {{6}}
   ];
 
   return sendWhatsAppTemplate({
     phoneNumber: params.phoneNumber,
-    templateName: "gift_card_notification",
+    templateName: "gift_card_notification_v3",
     placeholders,
     language: "ar",
     shop: params.shop,

@@ -173,7 +173,7 @@ describe("sendWarrantySms — WhatsApp Template Mapping", () => {
     const message = payload.messages[0];
 
     expect(message.to).toBe("+9647701234567");
-    expect(message.content.templateName).toBe("gift_card_notification");
+    expect(message.content.templateName).toBe("gift_card_notification_v3");
     expect(message.content.templateData.body.placeholders).toEqual([
       "Recipient",
       "50,000 IQD",

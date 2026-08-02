@@ -31,6 +31,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { buildRegistrationWhere } from "../utils/registration-filters.server";
+import { issueRewardAndNotify } from "../services/reward.server";
+import { sendWarrantySms } from "../services/infobip.server";
 
 // ---------- Loader ----------
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -113,16 +115,75 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // Ensure the registration belongs to this shop
   const registration = await prisma.warrantyRegistration.findFirst({
     where: { id, shop },
+    include: { products: true },
   });
 
   if (!registration) {
     return json({ error: "Registration not found" }, { status: 404 });
   }
 
+  const oldStatus = registration.status;
+
   await prisma.warrantyRegistration.update({
     where: { id },
     data: { status: newStatus },
   });
+
+  // If approved and previously not approved, send WhatsApp notification & reward code
+  if (newStatus === "approved" && oldStatus !== "approved") {
+    const existingReward = await prisma.customerReward.findFirst({
+      where: { shop, phone: registration.phone },
+    });
+
+    const productName =
+      registration.products?.[0]?.productTitle ?? "Geepas product";
+
+    if (existingReward) {
+      sendWarrantySms({
+        phoneNumber: registration.phone,
+        customerName: registration.firstName,
+        voucherCode: existingReward.discountCode,
+        productName,
+        warrantyDays: 365,
+        registrationId: registration.id,
+        registrationDate: registration.createdAt,
+        voucherExpiryDays: 30,
+        lang: "ar",
+        shop,
+        rewardType: existingReward.rewardType || "WARRANTY15",
+        discountPercentage: 15,
+      }).then((result) => {
+        if (!result.isDuplicate) {
+          prisma.sMSLog.create({
+            data: {
+              shop,
+              phone: registration.phone,
+              registrationId: registration.id,
+              smsSent: result.success,
+              smsSentAt: result.success ? new Date(result.timestamp) : null,
+              smsProviderResponse: result.rawResponse ?? result.error ?? null,
+            },
+          }).catch((dbErr) => console.error(`[approval] SMSLog write failed:`, dbErr));
+        }
+      }).catch((err) => console.error(`[approval] sendWarrantySms failed:`, err));
+    } else {
+      issueRewardAndNotify({
+        shop,
+        customerId: registration.customerId,
+        phone: registration.phone,
+        customerName: registration.firstName,
+        productName,
+        registrationId: registration.id,
+        registrationDate: registration.createdAt,
+        rewardType: "WARRANTY15",
+        discountPercentage: 15,
+      }).then((rewardResult) => {
+        if (!rewardResult.success) {
+          console.error(`[approval] issueRewardAndNotify failed:`, rewardResult.error);
+        }
+      }).catch((err) => console.error(`[approval] issueRewardAndNotify threw:`, err));
+    }
+  }
 
   return json({ success: true });
 };

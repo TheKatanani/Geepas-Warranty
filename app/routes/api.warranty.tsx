@@ -118,78 +118,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         include: { products: true },
       });
 
-      // Issue discount code + send SMS directly (no Shopify Flow dependency).
-      // Non-fatal: a reward failure must never block the warranty registration.
-      if (existingReward) {
-        console.log(
-          `[reward] Customer ${normalizedPhone} already has a reward on record — sending warranty confirmation with existing code`,
-        );
-        const productName =
-          registration.products?.[0]?.productTitle ?? "Geepas product";
-
-        sendWarrantySms({
-          phoneNumber: normalizedPhone,
-          customerName: firstName.trim(),
-          voucherCode: existingReward.discountCode,
-          productName,
-          warrantyDays: 365,
-          registrationId: registration.id,
-          registrationDate: registration.createdAt,
-          voucherExpiryDays: 30,
-          lang: "ar",
-          shop,
-          rewardType: existingReward.rewardType || "WARRANTY15",
-          discountPercentage: 15,
-        }).then((result) => {
-          if (!result.isDuplicate) {
-            prisma.sMSLog.create({
-              data: {
-                shop,
-                phone: normalizedPhone,
-                registrationId: registration.id,
-                smsSent: result.success,
-                smsSentAt: result.success ? new Date(result.timestamp) : null,
-                smsProviderResponse: result.rawResponse ?? result.error ?? null,
-              },
-            }).catch((dbErr) => {
-              console.error(`[reward] SMSLog write failed (non-fatal):`, dbErr);
-            });
-          }
-        }).catch((err) => {
-          console.error(`[reward] sendWarrantySms threw for existing reward customer:`, err);
-        });
-      } else {
-        const productName =
-          registration.products?.[0]?.productTitle ?? "Geepas product";
-
-        issueRewardAndNotify({
-          shop,
-          customerId,
-          phone: normalizedPhone,
-          customerName: firstName.trim(),
-          productName,
-          registrationId: registration.id,
-          registrationDate: registration.createdAt,
-          rewardType: "WARRANTY15",
-          discountPercentage: 15,
-        }).then((rewardResult) => {
-          if (!rewardResult.success) {
-            console.error(
-              `[reward] issueRewardAndNotify failed for registration ${registration.id}:`,
-              rewardResult.error,
-            );
-          } else {
-            console.log(
-              `[reward] Reward issued — code=${rewardResult.discountCode} messageId=${rewardResult.messageId}`,
-            );
-          }
-        }).catch((err) => {
-          console.error(
-            `[reward] issueRewardAndNotify threw for registration ${registration.id}:`,
-            err,
-          );
-        });
-      }
+      console.log(
+        `[api.warranty] Registration ${registration.id} created with status pending for customer ${normalizedPhone} — awaiting admin approval before sending notification.`,
+      );
 
       return json(
         {

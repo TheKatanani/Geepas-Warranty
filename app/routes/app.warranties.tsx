@@ -139,10 +139,12 @@ export default function WarrantiesPage() {
   const [statusFilter, setStatusFilter] = useState(status);
   const [phoneQuery, setPhoneQuery] = useState(phone);
   const phoneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queryDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (phoneDebounceRef.current) clearTimeout(phoneDebounceRef.current);
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
     };
   }, []);
 
@@ -261,9 +263,23 @@ export default function WarrantiesPage() {
   }, [runExport, selectedIds]);
 
   // ---------- Handlers ----------
-  const handleSearch = useCallback((value: string) => {
-    setQueryValue(value);
-  }, []);
+  const handleSearch = useCallback(
+    (value: string) => {
+      setQueryValue(value);
+      if (queryDebounceRef.current) clearTimeout(queryDebounceRef.current);
+      queryDebounceRef.current = setTimeout(() => {
+        const params = new URLSearchParams(searchParams);
+        if (value) {
+          params.set("search", value);
+        } else {
+          params.delete("search");
+        }
+        params.set("page", "1");
+        setSearchParams(params);
+      }, 400);
+    },
+    [searchParams, setSearchParams],
+  );
 
   const handleSearchClear = useCallback(() => {
     setQueryValue("");

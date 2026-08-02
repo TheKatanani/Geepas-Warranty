@@ -117,7 +117,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return new Response(null, { status: 200 });
   }
 
-  const [, , discountCode] = voucherParts;
+  const [, tier, discountCode] = voucherParts;
   const customerPhone = raw.phone ?? "";
   const firstName = raw.first_name ?? "Customer";
 
@@ -131,7 +131,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     console.warn(`[${topic}] Customer ${raw.id} phone "${customerPhone}" failed to normalize — skipping SMS`);
     return new Response(null, { status: 200 });
   }
-  console.log(`[${topic}] Sending voucher SMS to ${normalizedPhone} code=${discountCode}`);
+  console.log(`[${topic}] Sending voucher SMS to ${normalizedPhone} code=${discountCode} tier=${tier}`);
 
   // Look up the most recent warranty registration for this phone to populate SMS fields
   const registration = await prisma.warrantyRegistration.findFirst({
@@ -145,6 +145,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const registrationId = registration?.id ?? `cust-${raw.id}`;
   const registrationDate = registration?.createdAt ?? new Date();
 
+  const pctMatch = tier.match(/\d+/);
+  const discountPercentage = pctMatch ? parseInt(pctMatch[0], 10) : 15;
+
   const result = await sendWarrantySms({
     phoneNumber: normalizedPhone,
     customerName: firstName,
@@ -156,6 +159,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     voucherExpiryDays: 30,
     lang: "ar",
     shop,
+    rewardType: tier,
+    discountPercentage,
   });
 
   // Persist SMS log — skip for duplicates (already logged on the original send)

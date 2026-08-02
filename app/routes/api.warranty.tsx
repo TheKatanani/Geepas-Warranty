@@ -4,6 +4,7 @@ import prisma from "../db.server";
 import { unauthenticated } from "../shopify.server";
 import { normalizePhone } from "../utils/phone.server";
 import { issueRewardAndNotify } from "../services/reward.server";
+import { sendWarrantySms } from "../services/infobip.server";
 
 
 /**
@@ -121,8 +122,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // Non-fatal: a reward failure must never block the warranty registration.
       if (existingReward) {
         console.log(
-          `[reward] Customer ${normalizedPhone} already has a reward on record — skipping re-issue`,
+          `[reward] Customer ${normalizedPhone} already has a reward on record — sending warranty confirmation with existing code`,
         );
+        const productName =
+          registration.products?.[0]?.productTitle ?? "Geepas product";
+
+        sendWarrantySms({
+          phoneNumber: normalizedPhone,
+          customerName: firstName.trim(),
+          voucherCode: existingReward.discountCode,
+          productName,
+          warrantyDays: 365,
+          registrationId: registration.id,
+          registrationDate: registration.createdAt,
+          voucherExpiryDays: 30,
+          lang: "ar",
+          shop,
+          rewardType: existingReward.rewardType || "WARRANTY15",
+          discountPercentage: 15,
+        }).then((result) => {
+          if (!result.isDuplicate) {
+            prisma.sMSLog.create({
+              data: {
+                shop,
+                phone: normalizedPhone,
+                registrationId: registration.id,
+                smsSent: result.success,
+                smsSentAt: result.success ? new Date(result.timestamp) : null,
+                smsProviderResponse: result.rawResponse ?? result.error ?? null,
+              },
+            }).catch((dbErr) => {
+              console.error(`[reward] SMSLog write failed (non-fatal):`, dbErr);
+            });
+          }
+        }).catch((err) => {
+          console.error(`[reward] sendWarrantySms threw for existing reward customer:`, err);
+        });
       } else {
         const productName =
           registration.products?.[0]?.productTitle ?? "Geepas product";

@@ -1,4 +1,4 @@
-import { phoneSearchSuffix } from "./phone.server";
+import { normalizePhone, phoneSearchSuffix } from "./phone.server";
 
 export interface RegistrationFilterParams {
   search?: string | null;
@@ -21,7 +21,7 @@ export function buildRegistrationWhere(
   }
 
   if (search) {
-    where.OR = [
+    const searchConditions: any[] = [
       { firstName: { contains: search } },
       { email: { contains: search } },
       { phone: { contains: search } },
@@ -34,11 +34,51 @@ export function buildRegistrationWhere(
         },
       },
     ];
+
+    // If search contains digits, also match bare national digits and normalized phone numbers
+    const digitsOnly = search.replace(/\D/g, "");
+    if (digitsOnly.length >= 3) {
+      const bareDigits = digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly;
+      if (bareDigits.length >= 3) {
+        searchConditions.push({ phone: { contains: bareDigits } });
+      }
+      const normalized = normalizePhone(search);
+      if (normalized) {
+        searchConditions.push({ phone: { contains: normalized } });
+      }
+    }
+
+    where.OR = searchConditions;
   }
 
-  const phoneSuffix = phone ? phoneSearchSuffix(phone) : null;
-  if (phoneSuffix) {
-    where.phone = { endsWith: phoneSuffix };
+  if (phone) {
+    const digitsOnly = phone.replace(/\D/g, "");
+    const phoneConditions: any[] = [];
+
+    const bareDigits = digitsOnly.startsWith("0") ? digitsOnly.slice(1) : digitsOnly;
+    if (bareDigits.length >= 3) {
+      phoneConditions.push({ phone: { contains: bareDigits } });
+    }
+
+    const normalized = normalizePhone(phone);
+    if (normalized) {
+      phoneConditions.push({ phone: { contains: normalized } });
+    }
+
+    const phoneSuffix = phoneSearchSuffix(phone);
+    if (phoneSuffix) {
+      phoneConditions.push({ phone: { endsWith: phoneSuffix } });
+    }
+
+    if (phoneConditions.length > 0) {
+      if (where.OR) {
+        const searchOR = where.OR;
+        delete where.OR;
+        where.AND = [{ OR: searchOR }, { OR: phoneConditions }];
+      } else {
+        where.OR = phoneConditions;
+      }
+    }
   }
 
   return where;

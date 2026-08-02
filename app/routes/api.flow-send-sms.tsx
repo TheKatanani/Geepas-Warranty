@@ -113,7 +113,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // --- 7. Send SMS ---
-  console.log(`${LOG} calling sendWarrantySms → ${normalizedPhone} code=${discountCode}`);
+  console.log(`${LOG} calling sendWarrantySms → ${normalizedPhone} code=${discountCode} rewardType=${rewardType}`);
+
+  const rewardTypeStr = (rewardType as string) ?? "WARRANTY15";
+  const pctMatch = rewardTypeStr.match(/\d+/);
+  const discountPercentage = pctMatch ? parseInt(pctMatch[0], 10) : 15;
 
   const result = await sendWarrantySms({
     phoneNumber: normalizedPhone,
@@ -126,6 +130,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     voucherExpiryDays: 30,
     lang: "ar",
     shop: shopDomain,
+    rewardType: rewardTypeStr,
+    discountPercentage,
   });
 
   // --- 8. Persist SMSLog (skip on dedup — already logged) ---

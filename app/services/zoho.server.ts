@@ -598,3 +598,204 @@ export async function listPricebooks(): Promise<ZohoPricebook[]> {
 
   return books;
 }
+
+// ---------------------------------------------------------------------------
+// Item list & CSV Parsing helpers
+// ---------------------------------------------------------------------------
+
+export interface ZohoItem {
+  item_id: string;
+  name: string;
+  sku: string;
+  upc?: string;
+  ean?: string;
+  description?: string;
+  rate: number;
+  purchase_rate?: number;
+  stock_on_hand?: number;
+  brand?: string;
+  category_name?: string;
+  status?: string;
+  unit?: string;
+  location_name?: string;
+  warehouse_id?: string;
+  warehouse_name?: string;
+}
+
+export async function fetchZohoItems(options: { warehouseId?: string } = {}): Promise<ZohoItem[]> {
+  const orgId = process.env.ZOHO_ORGANIZATION_ID ?? "";
+  if (!orgId) throw new Error("ZOHO_ORGANIZATION_ID env var not set.");
+
+  const accessToken = await getAccessToken();
+  const items: ZohoItem[] = [];
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url = new URL(`${API_BASE}/items`);
+    url.searchParams.set("organization_id", orgId);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("per_page", "200");
+    url.searchParams.set("status", "active");
+    if (options.warehouseId) {
+      url.searchParams.set("warehouse_id", options.warehouseId);
+    }
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+    });
+
+    const raw = await res.text();
+    if (!res.ok) throw new Error(`Zoho listItems HTTP ${res.status}: ${raw}`);
+
+    const data = JSON.parse(raw) as {
+      code?: number;
+      message?: string;
+      items?: Array<Record<string, any>>;
+      page_context?: { page: number; per_page: number; has_more_page: boolean };
+    };
+
+    if (data.code !== 0) {
+      throw new Error(`Zoho listItems error ${data.code}: ${data.message}`);
+    }
+
+    const fetched = data.items ?? [];
+    for (const item of fetched) {
+      const rateNum = typeof item.rate === "number"
+        ? item.rate
+        : parseFloat(String(item.rate ?? "0").replace(/[^0-9.]/g, ""));
+      const stockNum = typeof item.stock_on_hand === "number"
+        ? item.stock_on_hand
+        : parseFloat(String(item.stock_on_hand ?? "0").replace(/[^0-9.]/g, ""));
+
+      items.push({
+        item_id: String(item.item_id),
+        name: String(item.name || item.item_name || ""),
+        sku: String(item.sku || "").trim(),
+        upc: item.upc ? String(item.upc).trim() : undefined,
+        ean: item.ean ? String(item.ean).trim() : undefined,
+        description: item.description || item.sales_description ? String(item.description || item.sales_description) : undefined,
+        rate: isNaN(rateNum) ? 0 : rateNum,
+        stock_on_hand: isNaN(stockNum) ? 0 : stockNum,
+        brand: item.brand ? String(item.brand) : undefined,
+        category_name: item.category_name ? String(item.category_name) : undefined,
+        status: item.status ? String(item.status) : undefined,
+        unit: item.unit ? String(item.unit) : undefined,
+        location_name: item.location_name ? String(item.location_name) : undefined,
+        warehouse_id: item.warehouse_id ? String(item.warehouse_id) : undefined,
+        warehouse_name: item.warehouse_name ? String(item.warehouse_name) : undefined,
+      });
+    }
+
+    hasMore = Boolean(data.page_context?.has_more_page);
+    page++;
+    if (page > 50) break; // Safety cap
+  }
+
+  return items;
+}
+
+/**
+ * Parses raw CSV content exported from Zoho Inventory (Item.csv) into ZohoItem array.
+ */
+export function parseZohoCsv(csvContent: string): ZohoItem[] {
+  const lines: string[] = [];
+  let currentLine = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < csvContent.length; i++) {
+    const char = csvContent[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      currentLine += char;
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && csvContent[i + 1] === "\n") i++;
+      if (currentLine.trim()) lines.push(currentLine);
+      currentLine = "";
+    } else {
+      currentLine += char;
+    }
+  }
+  if (currentLine.trim()) lines.push(currentLine);
+
+  if (lines.length < 2) return [];
+
+  const parseRow = (line: string): string[] => {
+    const fields: string[] = [];
+    let field = "";
+    let inside = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inside && line[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inside = !inside;
+        }
+      } else if (c === ',' && !inside) {
+        fields.push(field.trim());
+        field = "";
+      } else {
+        field += c;
+      }
+    }
+    fields.push(field.trim());
+    return fields;
+  };
+
+  const headers = parseRow(lines[0]);
+  const getIdx = (colName: string) => headers.findIndex(h => h.toLowerCase() === colName.toLowerCase());
+
+  const itemIdIdx = getIdx("Item ID");
+  const itemNameIdx = getIdx("Item Name");
+  const skuIdx = getIdx("SKU");
+  const upcIdx = getIdx("UPC");
+  const eanIdx = getIdx("EAN");
+  const descIdx = getIdx("Sales Description");
+  const priceIdx = getIdx("Selling Price");
+  const stockIdx = getIdx("Stock On Hand");
+  const brandIdx = getIdx("Brand");
+  const categoryIdx = getIdx("Category Name");
+  const statusIdx = getIdx("Status");
+  const unitIdx = getIdx("Unit");
+  const locationIdx = getIdx("Location Name");
+
+  const items: ZohoItem[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const row = parseRow(lines[i]);
+    const sku = (skuIdx !== -1 ? row[skuIdx] : "").trim();
+    const name = (itemNameIdx !== -1 ? row[itemNameIdx] : "").trim();
+    if (!sku && !name) continue;
+
+    const priceRaw = priceIdx !== -1 ? row[priceIdx] : "0";
+    const priceNum = parseFloat(priceRaw.replace(/[^0-9.]/g, "")) || 0;
+
+    const stockRaw = stockIdx !== -1 ? row[stockIdx] : "0";
+    const stockNum = parseFloat(stockRaw.replace(/[^0-9.-]/g, "")) || 0;
+
+    const locationName = locationIdx !== -1 && row[locationIdx] ? row[locationIdx] : undefined;
+
+    items.push({
+      item_id: itemIdIdx !== -1 ? row[itemIdIdx] : "",
+      name: name || sku,
+      sku: sku,
+      upc: upcIdx !== -1 && row[upcIdx] ? row[upcIdx] : undefined,
+      ean: eanIdx !== -1 && row[eanIdx] ? row[eanIdx] : undefined,
+      description: descIdx !== -1 && row[descIdx] ? row[descIdx] : undefined,
+      rate: priceNum,
+      stock_on_hand: stockNum,
+      brand: brandIdx !== -1 && row[brandIdx] ? row[brandIdx] : "GEEPAS",
+      category_name: categoryIdx !== -1 && row[categoryIdx] ? row[categoryIdx] : undefined,
+      status: statusIdx !== -1 && row[statusIdx] ? row[statusIdx] : "Active",
+      unit: unitIdx !== -1 && row[unitIdx] ? row[unitIdx] : undefined,
+      location_name: locationName,
+      warehouse_name: locationName,
+    });
+  }
+
+  return items;
+}
+
+

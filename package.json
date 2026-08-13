@@ -17,6 +17,7 @@
     "list-pricebooks": "tsx --env-file=.env scripts/list-zoho-pricebooks.ts",
     "inspect-zoho-contact": "tsx --env-file=.env scripts/inspect-zoho-contact.ts",
     "migrate-variants": "tsx --env-file=.env scripts/migrate-warranty-variants.ts",
+    "sync-zoho-products": "tsx --env-file=.env scripts/sync-zoho-products.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma": "prisma",

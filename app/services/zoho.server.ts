@@ -637,7 +637,7 @@ export async function fetchZohoItems(options: { warehouseId?: string } = {}): Pr
     url.searchParams.set("page", String(page));
     url.searchParams.set("per_page", "200");
     url.searchParams.set("status", "active");
-    if (options.warehouseId) {
+    if (options.warehouseId && /^\d+$/.test(options.warehouseId)) {
       url.searchParams.set("warehouse_id", options.warehouseId);
     }
 

@@ -169,12 +169,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     while (hasNextPage) {
       const fetchSize = limitParam > 0 && limitParam - processedCount < 20 ? limitParam - processedCount : 20;
 
-      const response = await admin.graphql(GET_PRODUCTS_QUERY, {
+      const response: any = await admin.graphql(GET_PRODUCTS_QUERY, {
         variables: { first: fetchSize, after: cursor },
       });
 
-      const jsonResponse = await response.json();
-      const productsData = jsonResponse?.data?.products;
+      const jsonResponse: any = await response.json();
+      const productsData: any = jsonResponse?.data?.products;
       const nodes = productsData?.nodes || [];
 
       for (const product of nodes) {

@@ -105,16 +105,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const warehouse = url.searchParams.get("warehouse") || "ZYN";
 
   let zohoItems: ZohoItem[] = [];
-  const rootCsvPath = path.resolve(process.cwd(), "..", "Item.csv");
-  const localCsvPath = path.resolve(process.cwd(), "Item.csv");
-  const targetCsvPath = fs.existsSync(rootCsvPath) ? rootCsvPath : (fs.existsSync(localCsvPath) ? localCsvPath : null);
+  let apiError: string | null = null;
 
-  if (targetCsvPath) {
-    try {
-      const csvData = fs.readFileSync(targetCsvPath, "utf-8");
-      zohoItems = parseZohoCsv(csvData);
-    } catch (e) {
-      console.warn("Failed to parse local Item.csv, falling back to Zoho API:", e);
+  const candidatePaths = [
+    path.resolve(process.cwd(), "Item.csv"),
+    path.resolve(process.cwd(), "public", "Item.csv"),
+    path.resolve(process.cwd(), "..", "Item.csv"),
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const csvData = fs.readFileSync(p, "utf-8");
+        const parsed = parseZohoCsv(csvData);
+        if (parsed.length > 0) {
+          zohoItems = parsed;
+          break;
+        }
+      } catch (e: any) {
+        console.warn(`Failed to parse CSV at ${p}:`, e);
+      }
     }
   }
 
@@ -122,7 +132,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     try {
       zohoItems = await fetchZohoItems({ warehouseId: warehouse });
     } catch (e: any) {
-      console.warn("Zoho API fetch failed:", e.message);
+      apiError = e.message || String(e);
+      console.warn("Zoho API fetch failed:", apiError);
     }
   }
 
@@ -144,6 +155,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     totalShopifyVariants: diff.totalShopifyVariants,
     matchedCount: diff.matchedCount,
     missingCount: diff.missingItems.length,
+    apiError,
     missingItems: diff.missingItems.map(i => ({
       sku: i.sku,
       name: i.name,
@@ -191,6 +203,14 @@ export default function ZohoProductSyncPage() {
       compactTitle
     >
       <BlockStack gap="500">
+        {data.apiError && (
+          <Banner title="Zoho API Sync Warning" tone="warning">
+            <p>
+              Failed to load live Zoho items via API: <code>{data.apiError}</code>.
+              {data.totalZohoItems > 0 ? " Loaded items from local Item.csv file fallback." : " No items available."}
+            </p>
+          </Banner>
+        )}
         <Banner title="ZYN Warehouse Product Import" tone="info">
           <p>
             Filtering active items strictly for the <strong>{warehouse} Warehouse</strong>. Only items belonging to {warehouse} will be scanned and created in Shopify.
@@ -198,7 +218,7 @@ export default function ZohoProductSyncPage() {
         </Banner>
 
         <Layout>
-          <Layout.Section width="oneThird">
+          <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="200">
                 <Text as="h3" variant="headingSm" tone="subdued">Total Zoho Items</Text>
@@ -207,19 +227,19 @@ export default function ZohoProductSyncPage() {
             </Card>
           </Layout.Section>
 
-          <Layout.Section width="oneThird">
+          <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="200">
                 <Text as="h3" variant="headingSm" tone="subdued">{warehouse} Warehouse Items</Text>
                 <InlineStack align="space-between">
                   <Text as="p" variant="headingLg">{data.filteredZohoItems}</Text>
-                  <Badge tone="attention">Filtered by {warehouse}</Badge>
+                  <Badge tone="attention">{`Filtered by ${warehouse}`}</Badge>
                 </InlineStack>
               </BlockStack>
             </Card>
           </Layout.Section>
 
-          <Layout.Section width="oneThird">
+          <Layout.Section variant="oneThird">
             <Card>
               <BlockStack gap="200">
                 <Text as="h3" variant="headingSm" tone="subdued">Missing in Shopify ({warehouse})</Text>
@@ -307,7 +327,7 @@ export default function ZohoProductSyncPage() {
           <Box padding="400">
             <InlineStack align="space-between" blockAlign="center">
               <Text as="h2" variant="headingMd">{warehouse} Missing Items ({data.missingItems.length})</Text>
-              <Badge tone="info">File Export Ready: {data.csvGeneratedPath}</Badge>
+              <Badge tone="info">{`File Export Ready: ${data.csvGeneratedPath}`}</Badge>
             </InlineStack>
           </Box>
           <IndexTable
@@ -326,7 +346,7 @@ export default function ZohoProductSyncPage() {
             {data.missingItems.slice(0, 100).map((item, index) => (
               <IndexTable.Row id={item.sku || String(index)} key={item.sku || index} position={index}>
                 <IndexTable.Cell>
-                  <Text variant="bodyMd" fontWeight="bold">{item.sku}</Text>
+                  <Text as="span" variant="bodyMd" fontWeight="bold">{item.sku}</Text>
                 </IndexTable.Cell>
                 <IndexTable.Cell>{item.name}</IndexTable.Cell>
                 <IndexTable.Cell>

@@ -54,12 +54,12 @@ export async function fetchAllShopifyVariants(admin: any): Promise<Array<{ id: s
   `;
 
   while (hasNextPage) {
-    const response = await admin.graphql(query, {
+    const response: any = await admin.graphql(query, {
       variables: { cursor },
     });
 
-    const json = await response.json();
-    const data = json.data?.productVariants;
+    const json: any = await response.json();
+    const data: any = json.data?.productVariants;
     if (!data) break;
 
     for (const edge of data.edges || []) {

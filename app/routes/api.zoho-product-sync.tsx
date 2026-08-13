@@ -11,16 +11,21 @@ import {
 } from "../services/zoho-product-sync.server.js";
 
 async function loadZohoItems(warehouseFilter?: string): Promise<ZohoItem[]> {
-  const rootCsvPath = path.resolve(process.cwd(), "..", "Item.csv");
-  const localCsvPath = path.resolve(process.cwd(), "Item.csv");
-  const targetPath = fs.existsSync(rootCsvPath) ? rootCsvPath : (fs.existsSync(localCsvPath) ? localCsvPath : null);
+  const candidatePaths = [
+    path.resolve(process.cwd(), "Item.csv"),
+    path.resolve(process.cwd(), "public", "Item.csv"),
+    path.resolve(process.cwd(), "..", "Item.csv"),
+  ];
 
-  if (targetPath) {
-    try {
-      const csvData = fs.readFileSync(targetPath, "utf-8");
-      return parseZohoCsv(csvData);
-    } catch (e) {
-      console.warn("[api.zoho-product-sync] CSV load failed, falling back to Zoho API:", e);
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const csvData = fs.readFileSync(p, "utf-8");
+        const parsed = parseZohoCsv(csvData);
+        if (parsed.length > 0) return parsed;
+      } catch (e) {
+        console.warn(`[api.zoho-product-sync] CSV load failed for ${p}:`, e);
+      }
     }
   }
 

@@ -21,6 +21,9 @@
             "hasWarrantyServiceTag": false,
             "isWarrantyEligible": true
           }
+        },
+        "bundleAttribute": {
+          "value": "bundle_1"
         }
       },
       {
@@ -46,6 +49,62 @@
         },
         "attribute": {
           "value": "10018934554915"
+        },
+        "bundleAttribute": {
+          "value": "bundle_1"
+        }
+      },
+      {
+        "id": "gid://shopify/CartLine/3",
+        "quantity": 1,
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "225000.00",
+            "currencyCode": "IQD"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/54402859106999",
+          "title": "Default Title",
+          "product": {
+            "id": "gid://shopify/Product/10018934554999",
+            "title": "Espresso Coffee Machine 225k",
+            "productType": "COFFEE MAKER",
+            "hasWarrantyServiceTag": false,
+            "isWarrantyEligible": true
+          }
+        },
+        "bundleAttribute": {
+          "value": "bundle_2"
+        }
+      },
+      {
+        "id": "gid://shopify/CartLine/4",
+        "quantity": 1,
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "500000.00",
+            "currencyCode": "IQD"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/55477194653987",
+          "title": "Default Title",
+          "product": {
+            "id": "gid://shopify/Product/10332687401251",
+            "title": "Extended Warranty (3 Years)",
+            "productType": "Warranty Service",
+            "hasWarrantyServiceTag": true,
+            "isWarrantyEligible": false
+          }
+        },
+        "attribute": {
+          "value": "10018934554999"
+        },
+        "bundleAttribute": {
+          "value": "bundle_2"
         }
       }
     ]

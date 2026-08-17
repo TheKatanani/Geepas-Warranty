@@ -29,6 +29,9 @@ query RunInput {
       attribute(key: "_protects_product_id") {
         value
       }
+      bundleAttribute: attribute(key: "_warranty_bundle_id") {
+        value
+      }
     }
   }
   discountNode {

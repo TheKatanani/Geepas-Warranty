@@ -97,8 +97,96 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   // --- Backfill phone on customer record if it was missing ---
   // Applies on first orders where Shopify leaves customer.phone null but the
   // delivery phone is present on the order/address.
-  if (!customer.phone) {
+  if (!customer.phone && normalizedPhone) {
     await saveCustomerPhone(shop, customerId, normalizedPhone);
+  }
+
+  // --- Automatically Register Extended Warranties in Database ---
+  if (warrantyLineItems.length > 0) {
+    for (const wItem of warrantyLineItems) {
+      const bundleId = wItem.properties?.find(
+        (p: any) => p.name === "_warranty_bundle_id",
+      )?.value;
+      const protectsProductId = wItem.properties?.find(
+        (p: any) => p.name === "_protects_product_id",
+      )?.value;
+
+      // Find matching protected physical product in the same order
+      let protectedItem = (order.line_items || []).find((item: any) => {
+        const itBundleId = item.properties?.find(
+          (p: any) => p.name === "_warranty_bundle_id",
+        )?.value;
+        return (
+          bundleId &&
+          itBundleId === bundleId &&
+          String(item.id) !== String(wItem.id)
+        );
+      });
+
+      if (!protectedItem && protectsProductId) {
+        protectedItem = (order.line_items || []).find(
+          (item: any) =>
+            String(item.product_id) === String(protectsProductId) &&
+            String(item.id) !== String(wItem.id),
+        );
+      }
+
+      const productTitle =
+        protectedItem?.title ||
+        wItem.properties?.find((p: any) => p.name === "المنتج المشمول بالضمان")
+          ?.value ||
+        "Protected Appliance";
+      const productSku = protectedItem?.sku || null;
+      const prodId = protectedItem?.product_id
+        ? `gid://shopify/Product/${protectedItem.product_id}`
+        : protectsProductId
+          ? `gid://shopify/Product/${protectsProductId}`
+          : null;
+
+      try {
+        const existingReg = await prisma.warrantyRegistration.findFirst({
+          where: {
+            shop,
+            invoiceNumber: String(orderNumber),
+          },
+        });
+
+        if (!existingReg) {
+          await prisma.warrantyRegistration.create({
+            data: {
+              shop,
+              customerId,
+              firstName: customer.first_name || customer.last_name || "Customer",
+              email: customer.email || `${customer.id}@customer.shopify.com`,
+              phone: normalizedPhone || rawPhone || "N/A",
+              city: order.shipping_address?.city || "Baghdad",
+              store: "Online Store (Geepas Iraq)",
+              purchaseDate: orderDate,
+              invoiceNumber: String(orderNumber),
+              status: "approved",
+              products: {
+                create: [
+                  {
+                    productId: prodId,
+                    productTitle: productTitle,
+                    sku: productSku,
+                    isManual: false,
+                  },
+                ],
+              },
+            },
+          });
+          console.log(
+            `[orders/paid] ✅ Created WarrantyRegistration for Order #${orderNumber} (${productTitle})`,
+          );
+        }
+      } catch (regErr) {
+        console.error(
+          `[orders/paid] Error creating WarrantyRegistration for Order #${orderNumber}:`,
+          regErr,
+        );
+      }
+    }
   }
 
   // ---- Voucher logic: first order vs. repeat order (mutually exclusive) ---------

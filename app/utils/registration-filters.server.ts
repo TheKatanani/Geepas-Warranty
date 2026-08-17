@@ -4,6 +4,7 @@ export interface RegistrationFilterParams {
   search?: string | null;
   status?: string | null;
   phone?: string | null;
+  warrantyType?: string | null;
 }
 
 /**
@@ -12,12 +13,24 @@ export interface RegistrationFilterParams {
  */
 export function buildRegistrationWhere(
   shop: string,
-  { search, status, phone }: RegistrationFilterParams,
+  { search, status, phone, warrantyType }: RegistrationFilterParams,
 ): any {
   const where: any = { shop };
 
   if (status && status !== "all") {
-    where.status = status;
+    if (status === "3-year") {
+      where.store = { contains: "3-Year" };
+    } else if (status === "standard") {
+      where.NOT = { store: { contains: "3-Year" } };
+    } else {
+      where.status = status;
+    }
+  }
+
+  if (warrantyType === "3-year") {
+    where.store = { contains: "3-Year" };
+  } else if (warrantyType === "standard") {
+    where.NOT = { store: { contains: "3-Year" } };
   }
 
   if (search) {

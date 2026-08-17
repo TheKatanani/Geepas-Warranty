@@ -160,7 +160,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
               email: customer.email || `${customer.id}@customer.shopify.com`,
               phone: normalizedPhone || rawPhone || "N/A",
               city: order.shipping_address?.city || "Baghdad",
-              store: "Online Store (Geepas Iraq)",
+              store: "Online Store (3-Year Extended Warranty)",
               purchaseDate: orderDate,
               invoiceNumber: String(orderNumber),
               status: "approved",
@@ -179,6 +179,29 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           console.log(
             `[orders/paid] ✅ Created WarrantyRegistration for Order #${orderNumber} (${productTitle})`,
           );
+
+          // Tag the order on Shopify
+          try {
+            const { admin } = await unauthenticated.admin(shop);
+            await admin.graphql(
+              `#graphql
+                mutation addOrderTag($id: ID!, $tags: [String!]!) {
+                  tagsAdd(id: $id, tags: $tags) {
+                    node { id }
+                    userErrors { field message }
+                  }
+                }
+              `,
+              {
+                variables: {
+                  id: `gid://shopify/Order/${orderId}`,
+                  tags: ["3-Year Warranty", "3-Year Extended Warranty"],
+                },
+              },
+            );
+          } catch (tagErr) {
+            console.error(`[orders/paid] Failed to add tag to order ${orderId}:`, tagErr);
+          }
         }
       } catch (regErr) {
         console.error(

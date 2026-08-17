@@ -474,7 +474,13 @@ export default function WarrantiesPage() {
         <IndexTable.Cell>{reg.phone}</IndexTable.Cell>
         <IndexTable.Cell>{reg.email}</IndexTable.Cell>
         <IndexTable.Cell>{reg.city}</IndexTable.Cell>
-        <IndexTable.Cell>{reg.store}</IndexTable.Cell>
+        <IndexTable.Cell>
+          {reg.store && reg.store.includes("3-Year") ? (
+            <Badge tone="success">3-Year Extended</Badge>
+          ) : (
+            <Badge tone="info">{reg.store || "Standard (2Y)"}</Badge>
+          )}
+        </IndexTable.Cell>
         <IndexTable.Cell>
           <Text variant="bodySm" as="span">
             {truncatedProducts}
@@ -503,6 +509,8 @@ export default function WarrantiesPage() {
   // ---------- Filter tabs ----------
   const tabs = [
     { id: "all", content: "All", accessibilityLabel: "All registrations" },
+    { id: "3-year", content: "⭐ 3-Year Extended" },
+    { id: "standard", content: "Standard Form (2Y)" },
     { id: "pending", content: "Pending" },
     { id: "approved", content: "Approved" },
     { id: "rejected", content: "Rejected" },

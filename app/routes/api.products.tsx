@@ -83,6 +83,13 @@ async function searchVariantsBySku(
   for (const edge of edges) {
     const node = edge.node;
     if (node.product?.status !== "ACTIVE") continue;
+    if (
+      node.product?.title?.toLowerCase().includes("extended warranty") ||
+      node.sku === "WAR-3Y" ||
+      node.title?.toLowerCase().includes("3 year")
+    ) {
+      continue;
+    }
     if (seen.has(node.id)) continue;
     seen.add(node.id);
 
@@ -113,7 +120,11 @@ async function searchProductsByName(
   const edges = data?.data?.products?.edges || [];
 
   return edges
-    .filter((e: any) => e.node.status === "ACTIVE")
+    .filter(
+      (e: any) =>
+        e.node.status === "ACTIVE" &&
+        !e.node.title?.toLowerCase().includes("extended warranty"),
+    )
     .map((e: any): ProductSearchResult => {
       const variant = e.node.variants?.edges?.[0]?.node;
       return {

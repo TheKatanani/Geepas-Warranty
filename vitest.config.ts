@@ -10,6 +10,7 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["./test/setup.ts"],
-    include: ["app/**/*.test.ts"],
+    include: ["app/**/*.test.ts", "extensions/**/*.test.ts"],
+    testTimeout: 20000,
   },
 });

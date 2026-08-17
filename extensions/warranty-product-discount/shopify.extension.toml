@@ -1,0 +1,20 @@
+api_version = "2026-07"
+
+[[extensions]]
+name = "Warranty Product Discount"
+handle = "warranty-product-discount"
+uid = "00138c88-23f0-d600-dd6d-cb1ced482e3ce8bc0724"
+type = "function"
+description = "Applies dynamic pricing discount to warranty products attached to physical products"
+
+  [[extensions.targeting]]
+  target = "purchase.product-discount.run"
+  input_query = "src/run.graphql"
+
+  [extensions.build]
+  command = "node build.js"
+  path = "dist/function.wasm"
+
+  [extensions.ui.paths]
+  create = "/"
+  details = "/"

@@ -41,6 +41,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const orderDate = order.created_at ? new Date(order.created_at) : new Date();
   const productName = order.line_items?.[0]?.title ?? "Geepas product";
 
+  // --- Check for Standalone Extended Warranty line items ---
+  const warrantyLineItems = (order.line_items || []).filter((item: any) =>
+    item.properties?.some((p: any) => p.name === "_protects_product_id"),
+  );
+  if (warrantyLineItems.length > 0) {
+    for (const wItem of warrantyLineItems) {
+      const protectsProductId = wItem.properties?.find(
+        (p: any) => p.name === "_protects_product_id",
+      )?.value;
+      console.log(
+        `[orders/paid] Standalone Extended Warranty detected in order ${orderNumber}: ` +
+          `Title="${wItem.title}" protects ProductId=${protectsProductId}`,
+      );
+    }
+  }
+
   // --- Extract customer fields ---
   const customer = order.customer;
   if (!customer) {

@@ -68,13 +68,13 @@ describe("Zoho Product Sync Service", () => {
       graphql: vi.fn().mockResolvedValue({
         json: async () => ({
           data: {
-            productCreate: {
+            productSet: {
               product: {
                 id: "gid://shopify/Product/9999",
                 title: "IRON-4",
                 handle: "iron-4",
                 status: "ACTIVE",
-                variants: { edges: [{ node: { id: "v1", sku: "GSI24025", price: "49000" } }] },
+                variants: { nodes: [{ id: "v1", sku: "GSI24025", price: "49000" }] },
               },
               userErrors: [],
             },

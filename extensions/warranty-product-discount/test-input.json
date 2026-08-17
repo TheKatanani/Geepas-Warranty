@@ -1,0 +1,53 @@
+{
+  "cart": {
+    "lines": [
+      {
+        "id": "gid://shopify/CartLine/1",
+        "quantity": 1,
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "429000.00",
+            "currencyCode": "IQD"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/54402859106595",
+          "title": "Default Title",
+          "product": {
+            "id": "gid://shopify/Product/10018934554915",
+            "title": "Espresso and Cappuccino Coffee Machine",
+            "productType": "COFFEE MAKER",
+            "hasWarrantyServiceTag": false,
+            "isWarrantyEligible": true
+          }
+        }
+      },
+      {
+        "id": "gid://shopify/CartLine/2",
+        "quantity": 1,
+        "cost": {
+          "amountPerQuantity": {
+            "amount": "500000.00",
+            "currencyCode": "IQD"
+          }
+        },
+        "merchandise": {
+          "__typename": "ProductVariant",
+          "id": "gid://shopify/ProductVariant/55477194653987",
+          "title": "Default Title",
+          "product": {
+            "id": "gid://shopify/Product/10332687401251",
+            "title": "Extended Warranty (3 Years)",
+            "productType": "Warranty Service",
+            "hasWarrantyServiceTag": true,
+            "isWarrantyEligible": false
+          }
+        },
+        "attribute": {
+          "value": "10018934554915"
+        }
+      }
+    ]
+  }
+}

@@ -146,20 +146,18 @@ export async function createShopifyProductFromZoho(
     : `<p>${title}</p>`;
 
   const mutation = `#graphql
-    mutation createProductWithVariant($input: ProductInput!) {
-      productCreate(input: $input) {
+    mutation productSet($synchronous: Boolean!, $input: ProductSetInput!) {
+      productSet(synchronous: $synchronous, input: $input) {
         product {
           id
           title
           handle
           status
           variants(first: 5) {
-            edges {
-              node {
-                id
-                sku
-                price
-              }
+            nodes {
+              id
+              sku
+              price
             }
           }
         }
@@ -177,8 +175,15 @@ export async function createShopifyProductFromZoho(
     productType: item.category_name || "General",
     descriptionHtml,
     status,
+    productOptions: [
+      {
+        name: "Title",
+        values: [{ name: "Default Title" }]
+      }
+    ],
     variants: [
       {
+        optionValues: [{ name: "Default Title", optionName: "Title" }],
         sku: sku,
         price: priceStr,
         barcode: item.upc || item.ean || sku,
@@ -187,19 +192,19 @@ export async function createShopifyProductFromZoho(
   };
 
   try {
-    const response = await admin.graphql(mutation, {
-      variables: { input },
+    const response: any = await admin.graphql(mutation, {
+      variables: { synchronous: true, input },
     });
 
-    const json = await response.json();
-    const userErrors = json.data?.productCreate?.userErrors;
+    const json: any = await response.json();
+    const userErrors = json.data?.productSet?.userErrors;
 
     if (userErrors && userErrors.length > 0) {
       const errMsg = userErrors.map((e: any) => `${e.field?.join(".") || "error"}: ${e.message}`).join(", ");
       return { success: false, error: errMsg };
     }
 
-    const createdProduct = json.data?.productCreate?.product;
+    const createdProduct = json.data?.productSet?.product;
     if (!createdProduct?.id) {
       return { success: false, error: "Product creation failed without explicit errors" };
     }

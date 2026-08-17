@@ -130,7 +130,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   });
 
   // If approved and previously not approved, send WhatsApp notification & reward code
-  if (newStatus === "approved" && oldStatus !== "approved") {
+  // ONLY for retail standard warranty form registrations (NOT for 3-Year Extended Warranty purchases from Online Store)
+  const is3YearExtended =
+    registration.store?.includes("3-Year") ||
+    registration.store?.includes("Online Store");
+
+  if (newStatus === "approved" && oldStatus !== "approved" && !is3YearExtended) {
     const existingReward = await prisma.customerReward.findFirst({
       where: { shop, phone: registration.phone },
     });

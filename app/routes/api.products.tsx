@@ -5,6 +5,7 @@ import {
   escapeQueryTerm,
   skuSearchTerms,
   variantDisplayTitle,
+  translateArabicQuery,
 } from "../utils/sku-search.server";
 
 const MIN_QUERY_LENGTH = 3;
@@ -168,7 +169,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const nameResults = await searchProductsByName(admin, search);
-    return json({ results: nameResults, source: "name" as const });
+    if (nameResults.length > 0) {
+      return json({ results: nameResults, source: "name" as const });
+    }
+
+    // If query is Arabic or no results found, try translated query
+    const isArabic = /[\u0600-\u06FF]/.test(search);
+    const translated = isArabic ? translateArabicQuery(search) : "";
+    if (translated) {
+      const translatedResults = await searchProductsByName(admin, translated);
+      if (translatedResults.length > 0) {
+        return json({ results: translatedResults, source: "name" as const });
+      }
+    }
+
+    return json({ results: [], source: "sku" as const });
   } catch (error: any) {
     console.error("[api.products] Error:", error);
     return json(

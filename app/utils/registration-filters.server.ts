@@ -17,20 +17,31 @@ export function buildRegistrationWhere(
 ): any {
   const where: any = { shop };
 
+  const is3YearCondition = {
+    OR: [
+      { store: { contains: "3-Year" } },
+      { store: { contains: "Extended" } },
+      { store: { contains: "3 Years" } },
+      { products: { some: { productTitle: { contains: "3-Year" } } } },
+      { products: { some: { productTitle: { contains: "3 Years" } } } },
+      { products: { some: { productTitle: { contains: "Extended Warranty" } } } },
+    ],
+  };
+
   if (status && status !== "all") {
     if (status === "3-year") {
-      where.store = { contains: "3-Year" };
+      where.AND = where.AND ? [...where.AND, is3YearCondition] : [is3YearCondition];
     } else if (status === "standard") {
-      where.NOT = { store: { contains: "3-Year" } };
+      where.NOT = is3YearCondition;
     } else {
       where.status = status;
     }
   }
 
   if (warrantyType === "3-year") {
-    where.store = { contains: "3-Year" };
+    where.AND = where.AND ? [...where.AND, is3YearCondition] : [is3YearCondition];
   } else if (warrantyType === "standard") {
-    where.NOT = { store: { contains: "3-Year" } };
+    where.NOT = is3YearCondition;
   }
 
   if (search) {

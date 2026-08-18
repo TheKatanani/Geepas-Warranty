@@ -31,7 +31,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, payload, topic } = await authenticate.webhook(request);
   console.log(`[orders/paid] ${topic} received for shop=${shop}`);
 
-  const order = payload as OrderPayload;
+  const order = payload as any;
 
   // --- Extract order fields ---
   const subtotal = parseFloat(order.subtotal_price ?? "0");
@@ -43,8 +43,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   // --- Check for Standalone Extended Warranty line items ---
   const warrantyLineItems = (order.line_items || []).filter((item: any) =>
-    item.properties?.some((p: any) => p.name === "_protects_product_id"),
+    Boolean(
+      item.title?.toLowerCase().includes("warranty") ||
+        item.title?.includes("الضمان") ||
+        item.properties?.some((p: any) => p.name === "_protects_product_id"),
+    ),
   );
+
   if (warrantyLineItems.length > 0) {
     for (const wItem of warrantyLineItems) {
       const protectsProductId = wItem.properties?.find(
@@ -58,7 +63,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   // --- Extract customer fields ---
-  const customer = order.customer;
+  const customer: any = order.customer;
   if (!customer) {
     console.log(
       `[orders/paid] order ${orderNumber} has no customer — skipping`,
@@ -432,9 +437,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       `[giftcard-wa] DEBUG order=${orderNumber} line_items count=${rawLineItems.length}:\n` +
         rawLineItems
           .map(
-            (li, i) =>
-              `  [${i}] title=${li.title ?? "(none)"} is_gift_card=${(li as any).is_gift_card} ` +
-              `gift_card=${(li as any).gift_card} product_id=${(li as any).product_id ?? "?"} ` +
+            (li: any, i: number) =>
+              `  [${i}] title=${li.title ?? "(none)"} is_gift_card=${li.is_gift_card} ` +
+              `gift_card=${li.gift_card} product_id=${li.product_id ?? "?"} ` +
               `properties=${JSON.stringify(li.properties ?? [])}`,
           )
           .join("\n"),
@@ -445,8 +450,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // 2. gift_card === true (alternative field name some API versions use)
     // 3. product_type === "gift_card" (not always present in webhook)
     const giftCardLineItems = rawLineItems.filter(
-      (li) =>
-        (li as any).is_gift_card === true || (li as any).gift_card === true,
+      (li: any) =>
+        li.is_gift_card === true || li.gift_card === true,
     );
 
     console.log(
@@ -540,10 +545,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             `[giftcard-wa] line item "${li.title}" properties: ${JSON.stringify(props)}`,
           );
           const phoneProp = props.find(
-            (p) => p.name === "Recipient Phone" || p.name === "recipient_phone",
+            (p: any) => p.name === "Recipient Phone" || p.name === "recipient_phone",
           );
           const nameProp = props.find(
-            (p) => p.name === "Recipient name" || p.name === "recipient_name",
+            (p: any) => p.name === "Recipient name" || p.name === "recipient_name",
           );
           if (phoneProp?.value) {
             gcRecipientPhone = phoneProp.value;

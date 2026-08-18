@@ -452,12 +452,30 @@ export default function WarrantiesPage() {
 
   // ---------- Table rows ----------
   const rowMarkup = registrations.map((reg, index) => {
-    const productNames = reg.products
-      .map((p) => p.productTitle)
-      .join(", ");
+    const is3Year =
+      Boolean(
+        (reg.store &&
+          (reg.store.includes("3-Year") ||
+            reg.store.includes("Extended") ||
+            reg.store.includes("3 Years") ||
+            reg.store.toLowerCase().includes("warranty"))) ||
+          reg.products.some(
+            (p) =>
+              p.productTitle?.includes("3-Year") ||
+              p.productTitle?.includes("3 Years") ||
+              p.productTitle?.includes("Extended Warranty"),
+          ),
+      );
+
+    const productNames =
+      reg.products
+        .map((p) => p.productTitle)
+        .filter(Boolean)
+        .join(", ") || "—";
+
     const truncatedProducts =
-      productNames.length > 40
-        ? productNames.slice(0, 40) + "…"
+      productNames.length > 45
+        ? productNames.slice(0, 45) + "…"
         : productNames;
 
     return (
@@ -480,8 +498,8 @@ export default function WarrantiesPage() {
         <IndexTable.Cell>{reg.email}</IndexTable.Cell>
         <IndexTable.Cell>{reg.city}</IndexTable.Cell>
         <IndexTable.Cell>
-          {reg.store && reg.store.includes("3-Year") ? (
-            <Badge tone="success">3-Year Extended</Badge>
+          {is3Year ? (
+            <Badge tone="success">⭐ 3-Year Extended</Badge>
           ) : (
             <Badge tone="info">{reg.store || "Standard (2Y)"}</Badge>
           )}

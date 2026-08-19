@@ -43,8 +43,8 @@ importers:
         specifier: ^4.1.0
         version: 4.2.0(@remix-run/node@2.17.5(typescript@5.9.3))(@remix-run/react@2.17.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(typescript@5.9.3))(@shopify/polaris@12.27.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)(typescript@5.9.3)
       '@shopify/shopify-app-session-storage-prisma':
-        specifier: ^8.0.0
-        version: 8.0.1(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@shopify/shopify-api@13.0.0)(@shopify/shopify-app-session-storage@5.0.0(@shopify/shopify-api@13.0.0))(prisma@6.19.3(typescript@5.9.3))
+        specifier: ^9.0.0
+        version: 9.0.0(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@shopify/shopify-api@13.0.0)(@shopify/shopify-app-session-storage@5.0.0(@shopify/shopify-api@13.0.0))(prisma@6.19.3(typescript@5.9.3))
       exceljs:
         specifier: ^4.4.0
         version: 4.4.0
@@ -1648,12 +1648,12 @@ packages:
       '@shopify/polaris':
         optional: true
 
-  '@shopify/shopify-app-session-storage-prisma@8.0.1':
-    resolution: {integrity: sha512-SAV8BXhE4kDFB46nx+L+sPLILwjcqMoMsiqGF+I0DVULbZArkSxXEOwW0r4KnVrzjNgRPgdP4HSBSzGUBcsYsQ==}
+  '@shopify/shopify-app-session-storage-prisma@9.0.0':
+    resolution: {integrity: sha512-ZsZ9AOL3IYtpB9RYqoBf6H05uGVvZp6x0l9Z8DgujAD27XbatGCNdrmKcA+h/1eH/kyyq55pGd+Gwg/qAQjA+A==}
     peerDependencies:
       '@prisma/client': ^6.19.0
-      '@shopify/shopify-api': ^12.0.0
-      '@shopify/shopify-app-session-storage': ^4.0.0
+      '@shopify/shopify-api': ^13.0.0
+      '@shopify/shopify-app-session-storage': ^5.0.0
       prisma: ^6.19.0
 
   '@shopify/shopify-app-session-storage@5.0.0':
@@ -7293,7 +7293,7 @@ snapshots:
     transitivePeerDependencies:
       - typescript
 
-  '@shopify/shopify-app-session-storage-prisma@8.0.1(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@shopify/shopify-api@13.0.0)(@shopify/shopify-app-session-storage@5.0.0(@shopify/shopify-api@13.0.0))(prisma@6.19.3(typescript@5.9.3))':
+  '@shopify/shopify-app-session-storage-prisma@9.0.0(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@shopify/shopify-api@13.0.0)(@shopify/shopify-app-session-storage@5.0.0(@shopify/shopify-api@13.0.0))(prisma@6.19.3(typescript@5.9.3))':
     dependencies:
       '@prisma/client': 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
       '@shopify/shopify-api': 13.0.0

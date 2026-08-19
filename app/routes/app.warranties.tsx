@@ -512,9 +512,18 @@ export default function WarrantiesPage() {
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text variant="bodySm" as="span">
-            {truncatedProducts}
-          </Text>
+          {reg.products && reg.products.length > 1 ? (
+            <BlockStack gap="050">
+              <Badge tone="info">{`${reg.products.length} Products`}</Badge>
+              <Text variant="bodyXs" as="span">
+                {truncatedProducts}
+              </Text>
+            </BlockStack>
+          ) : (
+            <Text variant="bodySm" as="span">
+              {truncatedProducts}
+            </Text>
+          )}
         </IndexTable.Cell>
         <IndexTable.Cell>{reg.invoiceNumber || "—"}</IndexTable.Cell>
         <IndexTable.Cell>

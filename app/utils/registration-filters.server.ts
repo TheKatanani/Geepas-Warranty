@@ -22,6 +22,8 @@ export function buildRegistrationWhere(
       { store: { contains: "3-Year" } },
       { store: { contains: "Extended" } },
       { store: { contains: "3 Years" } },
+      { store: { contains: "Online Store" } },
+      { store: { contains: "Geepas Iraq" } },
       { products: { some: { productTitle: { contains: "3-Year" } } } },
       { products: { some: { productTitle: { contains: "3 Years" } } } },
       { products: { some: { productTitle: { contains: "Extended Warranty" } } } },

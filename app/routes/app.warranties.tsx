@@ -458,6 +458,8 @@ export default function WarrantiesPage() {
           (reg.store.includes("3-Year") ||
             reg.store.includes("Extended") ||
             reg.store.includes("3 Years") ||
+            reg.store.includes("Online Store") ||
+            reg.store.includes("Geepas Iraq") ||
             reg.store.toLowerCase().includes("warranty"))) ||
           reg.products.some(
             (p) =>
@@ -499,7 +501,12 @@ export default function WarrantiesPage() {
         <IndexTable.Cell>{reg.city}</IndexTable.Cell>
         <IndexTable.Cell>
           {is3Year ? (
-            <Badge tone="success">⭐ 3-Year Extended</Badge>
+            <BlockStack gap="050">
+              <Badge tone="success">⭐ 3-Year Extended</Badge>
+              <Text variant="bodyXs" as="span" tone="subdued">
+                {reg.store || "Online Store"}
+              </Text>
+            </BlockStack>
           ) : (
             <Badge tone="info">{reg.store || "Standard (2Y)"}</Badge>
           )}
